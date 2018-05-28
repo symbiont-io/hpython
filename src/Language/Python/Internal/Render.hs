@@ -157,6 +157,20 @@ renderPrefix p =
     Prefix_Rb -> "Rb"
     Prefix_RB -> "RB"
 
+renderCompFor :: CompFor v a -> String
+renderCompFor (CompFor _ a b c d) =
+  "for" <> foldMap renderWhitespace a <> renderExpr b <>
+  "in" <> foldMap renderWhitespace c <> renderExpr d
+
+renderCompIf :: CompIf v a -> String
+renderCompIf (CompIf _ a b) = "if" <> foldMap renderWhitespace a <> renderExpr b
+
+renderComprehension :: Comprehension v a -> String
+renderComprehension (Comprehension _ a b c) =
+  renderExpr a <>
+  renderCompFor b <>
+  foldMap (either renderCompFor renderCompIf) c
+
 renderExpr :: Expr v a -> String
 renderExpr (Not _ ws e) = "not" <> foldMap renderWhitespace ws <> renderExpr e
 renderExpr (Parens _ ws1 e ws2) =
@@ -182,6 +196,10 @@ renderExpr (String _ prefix strType b ws) =
     foldMap renderChar b <> quote <> foldMap renderWhitespace ws
 renderExpr (Int _ n ws) = show n <> foldMap renderWhitespace ws
 renderExpr (Ident _ name) = renderIdent name
+renderExpr (ListComp _ ws1 comp ws2) =
+  "[" <> foldMap renderWhitespace ws1 <>
+  renderComprehension comp <>
+  "]" <> foldMap renderWhitespace ws2
 renderExpr (List _ ws1 exprs ws2) =
   "[" <> foldMap renderWhitespace ws1 <>
   renderCommaSep renderExpr exprs <>

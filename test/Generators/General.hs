@@ -6,6 +6,7 @@ import Control.Applicative
 import Control.Lens.Cons
 import Control.Lens.Fold
 import Control.Lens.Getter
+import Control.Lens.Setter (set)
 import Control.Lens.Wrapped
 import Data.Foldable (toList)
 import Data.List.NonEmpty (NonEmpty(..))
@@ -176,7 +177,37 @@ genExpr' isExp = Gen.sized $ \n ->
           (\a -> Parens () <$> genWhitespaces <*> pure a <*> genWhitespaces)
       , genTuple genExpr
       , Not () <$> genWhitespaces <*> genExpr
+      , ListComp () <$> genWhitespaces <*> genComprehension <*> genWhitespaces
       ]
+
+genCompFor :: MonadGen m => m (CompFor '[] ())
+genCompFor =
+  Gen.sized $ \n -> do
+    n1 <- Gen.integral (Range.constant 1 $ n-1)
+    n2 <- Gen.integral (Range.constant 1 $ n-n1)
+    CompFor () <$>
+      fmap NonEmpty.toList genWhitespaces1 <*>
+      Gen.resize n1 genExpr <*>
+      fmap NonEmpty.toList genWhitespaces1 <*>
+      Gen.resize n2 genExpr
+
+genCompIf :: MonadGen m => m (CompIf '[] ())
+genCompIf =
+  CompIf () <$> fmap NonEmpty.toList genWhitespaces1 <*> genExpr
+
+genComprehension :: MonadGen m => m (Comprehension '[] ())
+genComprehension =
+  Gen.scale (max 0 . subtract 1) .
+  Gen.sized $ \n ->
+    Comprehension () <$>
+    genExpr <*>
+    genCompFor <*>
+    Gen.list
+      (Range.constant 0 $ unSize n)
+      (Gen.choice
+         [ Left . set whitespaceAfter [Space] <$> genCompFor
+         , Right . set whitespaceAfter [Space] <$> genCompIf
+         ])
 
 genSmallStatement :: MonadGen m => m (SmallStatement '[] ())
 genSmallStatement = Gen.sized $ \n ->

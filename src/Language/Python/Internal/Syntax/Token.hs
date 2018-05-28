@@ -6,6 +6,7 @@ module Language.Python.Internal.Syntax.Token where
 import Control.Lens.Getter ((^.), getting)
 import Control.Lens.Lens (Lens, lens)
 import Control.Lens.Setter ((.~))
+import Data.Bifunctor (bimap)
 import Data.Function ((&))
 
 import Language.Python.Internal.Syntax.Whitespace
@@ -32,3 +33,14 @@ instance (Token s t, Token s' t') => Token (s, s') (t, t') where
 
   startChar = startChar . fst
   endChar = endChar . snd
+
+instance (Token s t, Token s' t') => Token (Either s s') (Either t t') where
+  unvalidate = bimap unvalidate unvalidate
+
+  whitespaceAfter =
+    lens
+      (either (^. getting whitespaceAfter) (^. getting whitespaceAfter))
+      (\a ws -> bimap (whitespaceAfter .~ ws) (whitespaceAfter .~ ws) a)
+
+  startChar = either startChar startChar
+  endChar = either endChar endChar

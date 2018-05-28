@@ -3,6 +3,7 @@
 {-# language DefaultSignatures, FlexibleContexts #-}
 module Language.Python.Internal.Optics where
 
+import Control.Lens.Fold (Fold)
 import Control.Lens.Getter (Getter, to)
 import Control.Lens.TH (makeLenses)
 import Control.Lens.Traversal (Traversal', failing)
@@ -139,3 +140,29 @@ instance HasNewlines Statement where
 
 instance HasNewlines Module where
   _Newlines = _Wrapped.traverse.failing (_Left._3) (_Right._Newlines)
+
+-- | The names that would be brought into scope if this expression
+-- were assigned to
+targets :: Fold (Expr v a) (Ident v a)
+targets f e =
+  case e of
+    ListComp{} -> pure e
+    List a b c d ->
+      List a b <$> (traverse.targets) f c <*> pure d
+    Deref{} -> pure e
+    Call{} -> pure e
+    None{} -> pure e
+    BinOp{} -> pure e
+    Negate{} -> pure e
+    Parens a b c d ->
+      Parens a b <$> targets f c <*> pure d
+    Ident a i -> Ident a <$> f i
+    Int{} -> pure e
+    Bool{} -> pure e
+    String{} -> pure e
+    Tuple a b c d ->
+      Tuple a <$>
+      targets f b <*>
+      pure c <*>
+      (traverse.traverse.targets) f d
+    Not{} -> pure e

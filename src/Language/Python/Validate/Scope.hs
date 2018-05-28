@@ -5,27 +5,28 @@
 {-# language RankNTypes #-}
 module Language.Python.Validate.Scope where
 
-import Control.Arrow
-import Control.Applicative
-import Control.Lens.Fold
-import Control.Lens.Getter
-import Control.Lens.Lens
-import Control.Lens.Plated
-import Control.Lens.Prism
-import Control.Lens.Review
-import Control.Lens.Setter
-import Control.Lens.TH
-import Control.Lens.Tuple
-import Control.Lens.Traversal
-import Control.Lens.Wrapped
-import Control.Monad.State
-import Data.Coerce
+import Control.Arrow ((&&&))
+import Control.Applicative ((<|>))
+import Control.Lens.Fold ((^..), toListOf, folded)
+import Control.Lens.Getter ((^.), to, getting, use)
+import Control.Lens.Lens (Lens')
+import Control.Lens.Plated (cosmos)
+import Control.Lens.Prism (_Right, _Just)
+import Control.Lens.Review ((#))
+import Control.Lens.Setter ((.~), (%~), Setter', mapped, over)
+import Control.Lens.TH (makeLenses)
+import Control.Lens.Tuple (_2, _3, _4)
+import Control.Lens.Traversal (traverseOf)
+import Control.Lens.Wrapped (_Wrapped)
+import Control.Monad.State (State, modify, evalState)
+import Data.Bitraversable (bitraverse)
+import Data.Coerce (coerce)
 import Data.Functor (($>))
 import Data.Functor.Compose
-import Data.String
-import Data.Type.Set
+import Data.String (fromString)
+import Data.Type.Set (Nub)
 import Data.Trie (Trie)
-import Data.Validate
+import Data.Validate (Validate(..))
 
 import qualified Data.Trie as Trie
 
@@ -259,7 +260,11 @@ validateSmallStatementScope (Assign a l ws1 ws2 r) =
   let
     ls = l ^.. unvalidated.cosmos._Ident._2.to (_identAnnotation &&& _identValue)
   in
-  (Assign a (coerce l) ws1 ws2 <$> validateExprScope r) <*
+  Assign a <$>
+  validateAssignableScope l <*>
+  pure ws1 <*>
+  pure ws2 <*>
+  validateExprScope r <*
   extendScope scLocalScope ls <*
   extendScope scImmediateScope ls
 validateSmallStatementScope (Global a _ _) = scopeErrors [_FoundGlobal # a]
@@ -329,6 +334,50 @@ validateBlockScope
 validateBlockScope (Block b) =
   Block <$> traverseOf (traverse._3._Right) validateStatementScope b
 
+validateAssignableScope
+  :: AsScopeError e v a
+  => Expr v a
+  -> ValidateScope a e (Expr (Nub (Scope ': v)) a)
+validateAssignableScope e =
+  case e of
+    ListComp{} -> pure $ coerce e
+    List{} -> pure $ coerce e
+    Deref a b c d -> Deref a <$> validateExprScope b <*> pure c <*> pure (coerce d)
+    Call{} -> pure $ coerce e
+    None{} -> pure $ coerce e
+    BinOp{} -> pure $ coerce e
+    Negate{} -> pure $ coerce e
+    Parens a b c d -> Parens a b <$> validateAssignableScope c <*> pure d
+    Ident{} -> pure $ coerce e
+    Int{} -> pure $ coerce e
+    Bool{} -> pure $ coerce e
+    String{} -> pure $ coerce e
+    Tuple a b c d ->
+      Tuple a <$>
+      validateAssignableScope b <*>
+      pure c <*>
+      (traverse.traverse) validateAssignableScope d
+    Not{} -> pure $ coerce e
+
+validateComprehensionScope
+  :: AsScopeError e v a
+  => Comprehension v a
+  -> ValidateScope a e (Comprehension (Nub (Scope ': v)) a)
+validateComprehensionScope (Comprehension a b c d) =
+  locallyOver scLocalScope id $
+    (\x y z -> Comprehension a z x y) <$>
+    validateCompFor c <*>
+    traverse (bitraverse validateCompFor validateCompIf) d <*>
+    validateExprScope b
+  where
+    validateCompFor (CompFor a b c d e) =
+      CompFor a b <$>
+      validateAssignableScope c <*>
+      pure d <*>
+      validateExprScope e <*
+      extendScope scLocalScope (c ^.. targets.to (_identAnnotation &&& _identValue))
+    validateCompIf (CompIf a b c) = CompIf a b <$> validateExprScope c
+
 validateExprScope
   :: AsScopeError e v a
   => Expr v a
@@ -337,6 +386,10 @@ validateExprScope (Not a ws e) = Not a ws <$> validateExprScope e
 validateExprScope (List a ws1 es ws2) =
   List a ws1 <$>
   traverse validateExprScope es <*>
+  pure ws2
+validateExprScope (ListComp a ws1 comp ws2) =
+  ListComp a ws1 <$>
+  validateComprehensionScope comp <*>
   pure ws2
 validateExprScope (Deref a e ws1 r) =
   Deref a <$>

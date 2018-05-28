@@ -22,6 +22,7 @@ import Control.Lens.Traversal
 import Control.Lens.Wrapped
 import Control.Monad.State
 import Control.Monad.Reader
+import Data.Bitraversable (bitraverse)
 import Data.Char
 import Data.Coerce
 import Data.Foldable
@@ -187,6 +188,41 @@ validateAdjacentL ann (a, aStr) (b, bStr)
   = syntaxErrors [_MissingSpacesIn # (ann, aStr a, bStr b)]
   | otherwise = pure a
 
+validateComprehensionSyntax
+  :: ( AsSyntaxError e v a
+     , Member Indentation v
+     )
+  => Comprehension v a
+  -> ValidateSyntax e (Comprehension (Nub (Syntax ': v)) a)
+validateComprehensionSyntax (Comprehension a b c d) =
+  fmap uncurry (Comprehension a <$> validateExprSyntax b) <*>
+  fmap (\(x :| y) -> (either id undefined x, y)) (go $ Left c :| d)
+  where
+    renderComp = either renderCompFor renderCompIf
+
+    go (val :| []) =
+      (:|) <$> bitraverse validateCompFor validateCompIf val <*> pure []
+    go (val :| x : xs) =
+      liftA2 NonEmpty.cons
+        (bitraverse validateCompFor validateCompIf val)
+        (validateAdjacentL a (val, renderComp) (x, renderComp) *>
+         go (x :| xs))
+
+    validateCompFor (CompFor a b c d e) =
+      CompFor a <$>
+      pure b <*
+      validateAdjacentL a (Keyword ('f' :| "or") b, keyword) (c, renderExpr) <*>
+      validateAssignableSyntax c <*
+      validateAdjacentL a (c, renderExpr) (Keyword ('i' :| "n") d, keyword) <*>
+      pure d <*
+      validateAdjacentL a (Keyword ('i' :| "n") d, keyword) (e, renderExpr) <*>
+      validateExprSyntax e
+
+    validateCompIf (CompIf a b c) =
+      CompIf a b <$
+      validateAdjacentL a (Keyword ('i' :| "f") b, keyword) (c, renderExpr) <*>
+      validateExprSyntax c
+
 validateExprSyntax
   :: ( AsSyntaxError e v a
      , Member Indentation v
@@ -210,6 +246,11 @@ validateExprSyntax (Int a n ws) = pure $ Int a n ws
 validateExprSyntax (Ident a name) = Ident a <$> validateIdent name
 validateExprSyntax (List a ws1 exprs ws2) =
   List a ws1 <$> traverse validateExprSyntax exprs <*> pure ws2
+validateExprSyntax (ListComp a ws1 comp ws2) =
+  ListComp a <$>
+  pure ws1 <*>
+  validateComprehensionSyntax comp <*>
+  validateWhitespace a ws2
 validateExprSyntax (Deref a expr ws1 name) =
   Deref a <$>
   validateExprSyntax expr <*>
@@ -253,6 +294,16 @@ validateBlockSyntax (Block bs) = Block . NonEmpty.fromList <$> go (NonEmpty.toLi
     go [] = error "impossible"
     go [b] = pure <$> traverseOf (_3._Right) validateStatementSyntax b
     go (b:bs) = (:) <$> traverseOf (_3._Right) validateStatementSyntax b <*> go bs
+
+validateAssignableSyntax
+  :: ( AsSyntaxError e v a
+     , Member Indentation v
+     )
+  => Expr v a
+  -> ValidateSyntax e (Expr (Nub (Syntax ': v)) a)
+validateAssignableSyntax e
+  | canAssignTo e = validateExprSyntax e
+  | otherwise = syntaxErrors [_CannotAssignTo # e]
 
 validateCompoundStatementSyntax
   :: ( AsSyntaxError e v a
@@ -338,11 +389,9 @@ validateCompoundStatementSyntax (TryFinally a b c d e f g h i) =
   validateBlockSyntax i
 validateCompoundStatementSyntax (For a b c d e f g h i) =
   For a <$>
-  validateWhitespace a b <*>
-  (validateAdjacentR a (Keyword ('f' :| "or") b, keyword) (c, renderExpr) *>
-   if canAssignTo c
-   then validateExprSyntax c
-   else syntaxErrors [_CannotAssignTo # (a, c)]) <*>
+  validateWhitespace a b <*
+  validateAdjacentR a (Keyword ('f' :| "or") b, keyword) (c, renderExpr) <*>
+  validateAssignableSyntax c <*>
   validateWhitespace a d <*>
   validateExprSyntax e <*>
   validateWhitespace a f <*>
@@ -459,9 +508,7 @@ validateSmallStatementSyntax (Assign a lvalue ws1 ws2 rvalue) =
         else []
     in
       (Assign a <$>
-      (if canAssignTo lvalue
-        then validateExprSyntax lvalue
-        else syntaxErrors [_CannotAssignTo # (a, lvalue)]) <*>
+      validateAssignableSyntax lvalue <*>
       pure ws1 <*>
       pure ws2 <*>
       validateExprSyntax rvalue) <*

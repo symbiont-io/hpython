@@ -249,16 +249,19 @@ genDeref =
 -- | This is necessary to prevent generating exponentials that will take forever to evaluate
 -- when python does constant folding
 genExpr :: MonadGen m => m (Expr '[] ())
-genExpr = genExpr' False
+genExpr = genExpr' False Nothing
 
-genExpr' :: MonadGen m => Bool -> m (Expr '[] ())
-genExpr' isExp = Gen.sized $ \n ->
+genExprIdents :: MonadGen m => [Ident '[] ()] -> m (Expr '[] ())
+genExprIdents is = genExpr' False (Just is)
+
+genExpr' :: MonadGen m => Bool -> Maybe [Ident '[] ()] -> m (Expr '[] ())
+genExpr' isExp idents = Gen.sized $ \n ->
   if n <= 1
   then
     Gen.choice
     [ genBool
     , if isExp then genSmallInt else genInt
-    , Ident () <$> genIdent
+    , Ident () <$> maybe genIdent Gen.element idents
     , String () <$>
       Gen.maybe genStringPrefix <*>
       genStringType <*>
@@ -268,12 +271,12 @@ genExpr' isExp = Gen.sized $ \n ->
   else
     Gen.resize (n-1) .
     Gen.choice $
-      [ genList genExpr
+      [ genList $ genExpr' False idents
       , genDeref
-      , genParens (genExpr' isExp)
+      , genParens (genExpr' isExp idents)
       , Gen.sized $ \n -> do
           n' <- Gen.integral (Range.constant 1 (n-1))
-          a <- Gen.resize n' genExpr
+          a <- Gen.resize n' $ genExpr' False idents
           b <- Gen.resize (n - n') genArgs
           Call () a <$> genWhitespaces <*> pure b <*> genWhitespaces
       , Gen.sized $ \n -> do
@@ -281,14 +284,55 @@ genExpr' isExp = Gen.sized $ \n ->
           op <- genOp
           Gen.subtermM2
             (Gen.resize n' genExpr)
-            (Gen.resize (n - n') (genExpr' $ case op of; Exp{} -> True; _ -> False))
+            (Gen.resize (n - n') (genExpr' (case op of; Exp{} -> True; _ -> False) idents))
             (\a b ->
                BinOp () (a & whitespaceAfter .~ [Space]) <$>
                pure (op & whitespaceAfter .~ [Space]) <*>
                pure b)
       , genTuple genExpr
-      , Not () <$> (NonEmpty.toList <$> genWhitespaces1) <*> genExpr
+      , Not () <$> (NonEmpty.toList <$> genWhitespaces1) <*> genExpr' False idents
+      , ListComp () <$> genWhitespaces <*> genComprehension <*> genWhitespaces
       ]
+
+genCompFor :: MonadGen m => m ([Ident '[] ()], CompFor '[] ())
+genCompFor =
+  Gen.sized $ \n -> do
+    n1 <- Gen.integral (Range.constant 1 $ n-1)
+    n2 <- Gen.integral (Range.constant 1 $ n-n1)
+    assign <- Gen.resize n1 genAssignable
+    fmap ((,) (assign ^.. targets)) $
+      CompFor () <$>
+      fmap NonEmpty.toList genWhitespaces1 <*>
+      pure assign <*>
+      fmap NonEmpty.toList genWhitespaces1 <*>
+      Gen.resize n2 genExpr
+
+genCompIf :: MonadGen m => m (CompIf '[] ())
+genCompIf =
+  CompIf () <$> fmap NonEmpty.toList genWhitespaces1 <*> genExpr
+
+genComprehension :: MonadGen m => m (Comprehension '[] ())
+genComprehension =
+  Gen.scale (max 0 . subtract 1) .
+  Gen.sized $ \n -> do
+    (bound, cf) <- genCompFor
+    conds <-
+      Gen.list (Range.constant 0 $ unSize n) $
+      Gen.choice
+        [ do
+            (bound', cf') <- genCompFor
+            pure (bound', Left $ cf' & whitespaceAfter .~ [Space])
+        , do
+            ci' <- genCompIf
+            pure ([], Right $ ci' & whitespaceAfter .~ [Space])
+        ]
+    let
+      bounds = bound <> (conds >>= fst)
+      conds' = snd <$> conds
+    Comprehension () <$>
+      genExprIdents bounds <*>
+      pure cf <*>
+      pure conds'
 
 genAssignable :: MonadGen m => m (Expr '[] ())
 genAssignable =
