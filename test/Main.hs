@@ -221,14 +221,14 @@ statement_printparse_id =
 
 main = do
   let file = "hedgehog-test.py"
-  check . withTests 200 $ syntax_expr file
-  check . withTests 200 $ syntax_statement file
-  check . withTests 200 $ syntax_module file
-  check . withTests 200 $ correct_syntax_expr file
-  check . withTests 200 $ correct_syntax_statement file
+  check . withDiscards 1000 $ syntax_expr file
+  check . withDiscards 1000 $ syntax_statement file
+  check . withDiscards 1000 $ syntax_module file
+  check $ correct_syntax_expr file
+  check $ correct_syntax_statement file
   check expr_printparseprint_print
-  check . withShrinks 2000 $ statement_printparseprint_print
-  check . withShrinks 2000 $ statement_printparse_id
+  check statement_printparseprint_print
+  check statement_printparse_id
   checkParallel scopeTests
   checkParallel roundtripTests
   removeFile "hedgehog-test.py"
