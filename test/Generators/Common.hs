@@ -1,30 +1,29 @@
 {-# language DataKinds #-}
 module Generators.Common where
 
-import Control.Applicative (Alternative)
-import Data.List.NonEmpty (NonEmpty(..))
-
 import Hedgehog
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
+
+import Data.List.NonEmpty (NonEmpty(..))
 
 import Language.Python.Internal.Syntax
 
 import Generators.Sized
 
-genSmallInt :: (MonadGen m, Alternative m) => m (Expr '[] ())
+genSmallInt :: MonadGen m => m (Expr '[] ())
 genSmallInt = Int () <$> Gen.integral (Range.constant 0 100) <*> genWhitespaces
 
-genString :: (MonadGen m, Alternative m) => m String
+genString :: MonadGen m => m String
 genString = Gen.list (Range.constant 0 50) (Gen.filter (/='\0') Gen.latin1)
 
-genNewline :: (MonadGen m, Alternative m) => m Newline
+genNewline :: MonadGen m => m Newline
 genNewline = Gen.element [LF, CR, CRLF]
 
-genStringType :: (MonadGen m, Alternative m) => m StringType
+genStringType :: MonadGen m => m StringType
 genStringType = Gen.element [ShortSingle, ShortDouble, LongSingle, LongDouble]
 
-genAnyWhitespace :: (MonadGen m, Alternative m) => m Whitespace
+genAnyWhitespace :: MonadGen m => m Whitespace
 genAnyWhitespace =
   Gen.choice
     [ pure Space
@@ -37,7 +36,7 @@ genAnyWhitespace =
         (Gen.choice [pure Space, pure Tab, Newline <$> genNewline])
     ]
 
-genNormalWhitespace :: (MonadGen m, Alternative m) => m Whitespace
+genNormalWhitespace :: MonadGen m => m Whitespace
 genNormalWhitespace =
   Gen.choice
     [ pure Space
@@ -47,7 +46,7 @@ genNormalWhitespace =
       Gen.list (Range.constant 0 10) (Gen.element [Space, Tab])
     ]
 
-genStringPrefix :: (MonadGen m, Alternative m) => m StringPrefix
+genStringPrefix :: MonadGen m => m StringPrefix
 genStringPrefix =
   Gen.element
     [ Prefix_r
@@ -66,32 +65,32 @@ genStringPrefix =
     , Prefix_RB
     ]
 
-genComment :: (MonadGen m, Alternative m) => m Comment
+genComment :: MonadGen m => m Comment
 genComment =
   Comment <$> Gen.list (Range.linear 0 100) (Gen.filter (`notElem` "\0\r\n") Gen.ascii)
 
-genWhitespaces :: (MonadGen m, Alternative m) => m [Whitespace]
+genWhitespaces :: MonadGen m => m [Whitespace]
 genWhitespaces = Gen.list (Range.constant 0 10) genNormalWhitespace
 
-genAnyWhitespaces :: (MonadGen m, Alternative m) => m [Whitespace]
+genAnyWhitespaces :: MonadGen m => m [Whitespace]
 genAnyWhitespaces = Gen.list (Range.constant 0 10) genAnyWhitespace
 
-genWhitespaces1 :: (MonadGen m, Alternative m) => m (NonEmpty Whitespace)
+genWhitespaces1 :: MonadGen m => m (NonEmpty Whitespace)
 genWhitespaces1 = Gen.nonEmpty (Range.constant 1 10) genNormalWhitespace
 
-genNone :: (MonadGen m, Alternative m) => m (Expr '[] ())
+genNone :: MonadGen m => m (Expr '[] ())
 genNone = None () <$> genWhitespaces
 
-genBool :: (MonadGen m, Alternative m) => m (Expr '[] ())
+genBool :: MonadGen m => m (Expr '[] ())
 genBool = Bool () <$> Gen.bool <*> genWhitespaces
 
-genOp :: (MonadGen m, Alternative m) => m (BinOp ())
+genOp :: MonadGen m => m (BinOp ())
 genOp = Gen.element $ _opOperator <$> operatorTable
 
-genDot :: (MonadGen m, Alternative m) => m Dot
+genDot :: MonadGen m => m Dot
 genDot = Dot <$> genWhitespaces
 
-genCommaSep :: (MonadGen m, Alternative m) => m a -> m (CommaSep a)
+genCommaSep :: MonadGen m => m a -> m (CommaSep a)
 genCommaSep ma =
   thresholds
     [ (Nothing, pure CommaSepNone)
@@ -104,14 +103,14 @@ genCommaSep ma =
       )
     ]
 
-genTuple :: (MonadGen m, Alternative m) => m (Expr '[] ()) -> m (Expr '[] ())
+genTuple :: MonadGen m => m (Expr '[] ()) -> m (Expr '[] ())
 genTuple expr =
   sized2M
     (\a b -> Tuple () a <$> genWhitespaces <*> pure b)
     expr
     (sizedMaybe $ genCommaSep1' expr)
 
-genCommaSep1 :: (MonadGen m, Alternative m) => m a -> m (CommaSep1 a)
+genCommaSep1 :: MonadGen m => m a -> m (CommaSep1 a)
 genCommaSep1 ma =
   thresholds
     [ (Just 1, CommaSepOne1 <$> ma)
@@ -123,7 +122,7 @@ genCommaSep1 ma =
       )
     ]
 
-genCommaSep1' :: (MonadGen m, Alternative m) => m a -> m (CommaSep1' a)
+genCommaSep1' :: MonadGen m => m a -> m (CommaSep1' a)
 genCommaSep1' ma =
   thresholds
     [ (Just 1, CommaSepOne1' <$> ma <*> Gen.maybe genWhitespaces)
@@ -135,7 +134,7 @@ genCommaSep1' ma =
       )
     ]
 
-genImportAs :: (MonadGen m, Alternative m) => m (e ()) -> m (Ident '[] ()) -> m (ImportAs e '[] ())
+genImportAs :: MonadGen m => m (e ()) -> m (Ident '[] ()) -> m (ImportAs e '[] ())
 genImportAs me genIdent =
   sized2
     (ImportAs ())
