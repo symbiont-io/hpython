@@ -1,6 +1,7 @@
 {-# language GeneralizedNewtypeDeriving, DeriveFunctor #-}
 module Generators.Sized where
 
+import Control.Applicative (Alternative, (<|>))
 import Control.Monad (when)
 import Data.List.NonEmpty (NonEmpty(..))
 
@@ -11,8 +12,16 @@ import qualified Hedgehog.Internal.Shrink as Shrink
 
 import GHC.Stack (HasCallStack)
 
+growable :: (HasCallStack, MonadGen m, Alternative m) => Size -> Size -> m a -> m (Size, a)
+growable sz mx ma =
+  (,) sz <$> Gen.resize sz ma <|>
+  do
+     when (sz == mx) $ error "test" -- Gen.discard
+     sz' <- Gen.integral_ $ Range.constant sz mx
+     growable sz' mx ma
+
 sized2M
-  :: MonadGen m
+  :: (MonadGen m, Alternative m)
   => (a -> b -> m c)
   -> m a
   -> m b
@@ -21,12 +30,12 @@ sized2M f ma mb =
   Gen.sized $ \n -> do
     when (n < 2) Gen.discard
     aSize <- Gen.integral (Range.constant 1 (n-1))
-    a <- Gen.resize aSize ma
-    b <- Gen.resize (n - aSize) mb
+    (a_actual, a) <- growable aSize (n-1) ma
+    (_, b) <- growable (n - a_actual) a_actual mb
     f a b
 
 sized2
-  :: MonadGen m
+  :: (MonadGen m, Alternative m)
   => (a -> b -> c)
   -> m a
   -> m b
@@ -34,7 +43,7 @@ sized2
 sized2 f = sized2M (\a b -> pure $ f a b)
 
 sized3M
-  :: MonadGen m
+  :: (MonadGen m, Alternative m)
   => (a -> b -> c -> m d)
   -> m a
   -> m b
@@ -49,7 +58,7 @@ sized3M f ma mb mc =
     cd c
 
 sized3
-  :: MonadGen m
+  :: (MonadGen m, Alternative m)
   => (a -> b -> c -> d)
   -> m a
   -> m b
@@ -58,7 +67,7 @@ sized3
 sized3 f = sized3M (\a b c -> pure $ f a b c)
 
 sized4M
-  :: MonadGen m
+  :: (MonadGen m, Alternative m)
   => (a -> b -> c -> d -> m e)
   -> m a
   -> m b
@@ -74,7 +83,7 @@ sized4M f ma mb mc md =
     de d
 
 sized4
-  :: MonadGen m
+  :: (MonadGen m, Alternative m)
   => (a -> b -> c -> d -> e)
   -> m a
   -> m b
@@ -83,14 +92,14 @@ sized4
   -> m e
 sized4 f = sized4M (\a b c d -> pure $ f a b c d)
 
-sizedList :: MonadGen m => m a -> m [a]
+sizedList :: (MonadGen m, Alternative m) => m a -> m [a]
 sizedList ma =
   Gen.shrink Shrink.list $
   sized2 (:)
     ma
     (Gen.sized $ \n -> if n == 0 then pure [] else sizedList ma)
 
-sizedNonEmpty :: MonadGen m => m a -> m (NonEmpty a)
+sizedNonEmpty :: (MonadGen m, Alternative m) => m a -> m (NonEmpty a)
 sizedNonEmpty ma =
   Gen.shrink (\(x :| xs) -> (x :|) <$> Shrink.list xs) $
   Gen.sized $ \n -> do

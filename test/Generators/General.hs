@@ -18,7 +18,7 @@ import Language.Python.Internal.Syntax
 import Generators.Common
 import Generators.Sized
 
-genParam :: MonadGen m => m (Expr '[] ()) -> m (Param '[] ())
+genParam :: (MonadGen m, Alternative m) => m (Expr '[] ()) -> m (Param '[] ())
 genParam genExpr =
   thresholds
     [ (Nothing, PositionalParam () <$> genIdent)
@@ -27,7 +27,7 @@ genParam genExpr =
     , (Just 2, DoubleStarParam () <$> genWhitespaces <*> genIdent)
     ]
 
-genArg :: MonadGen m => m (Expr '[] ()) -> m (Arg '[] ())
+genArg :: (MonadGen m, Alternative m) => m (Expr '[] ()) -> m (Arg '[] ())
 genArg genExpr =
   thresholds
     [ (Just 2, PositionalArg () <$> genExpr)
@@ -36,10 +36,10 @@ genArg genExpr =
     , (Just 2, DoubleStarArg () <$> genWhitespaces <*> genExpr)
     ]
 
-genInt :: MonadGen m => m (Expr '[] ())
+genInt :: (MonadGen m, Alternative m) => m (Expr '[] ())
 genInt = Int () <$> Gen.integral (Range.constant (-2^32) (2^32)) <*> genWhitespaces
 
-genIdent :: MonadGen m => m (Ident '[] ())
+genIdent :: (MonadGen m, Alternative m) => m (Ident '[] ())
 genIdent =
   MkIdent () <$>
   liftA2 (:)
@@ -47,7 +47,7 @@ genIdent =
     (Gen.list (Range.constant 0 49) (Gen.choice [Gen.alphaNum, pure '_'])) <*>
   genWhitespaces
 
-genModuleName :: MonadGen m => m (ModuleName '[] ())
+genModuleName :: (MonadGen m, Alternative m) => m (ModuleName '[] ())
 genModuleName =
   Gen.recursive Gen.choice
   [ ModuleNameOne () <$> genIdent ]
@@ -57,7 +57,7 @@ genModuleName =
     genModuleName
   ]
 
-genRelativeModuleName :: MonadGen m => m (RelativeModuleName '[] ())
+genRelativeModuleName :: (MonadGen m, Alternative m) => m (RelativeModuleName '[] ())
 genRelativeModuleName =
   Gen.choice
   [ Relative <$>
@@ -68,7 +68,7 @@ genRelativeModuleName =
     genModuleName
   ]
 
-genImportTargets :: MonadGen m => m (ImportTargets '[] ())
+genImportTargets :: (MonadGen m, Alternative m) => m (ImportTargets '[] ())
 genImportTargets =
   thresholds
   [ (Nothing, ImportAll () <$> genWhitespaces)
@@ -84,7 +84,7 @@ genImportTargets =
     )
   ]
 
-genBlock :: MonadGen m => m (Block '[] ())
+genBlock :: (MonadGen m, Alternative m) => m (Block '[] ())
 genBlock =
   Gen.shrink (\(Block (x :| xs)) -> Block . (x :|) <$> Shrink.list xs) $ do
   indent <- NonEmpty.toList <$> genWhitespaces1
@@ -101,10 +101,10 @@ genBlock =
 
 -- | This is necessary to prevent generating exponentials that will take forever to evaluate
 -- when python does constant folding
-genExpr :: MonadGen m => m (Expr '[] ())
+genExpr :: (MonadGen m, Alternative m) => m (Expr '[] ())
 genExpr = genExpr' False
 
-genExpr' :: MonadGen m => Bool -> m (Expr '[] ())
+genExpr' :: (MonadGen m, Alternative m) => Bool -> m (Expr '[] ())
 genExpr' isExp =
   thresholds
   [ (Nothing, genBool)
@@ -161,7 +161,7 @@ genExpr' isExp =
   , (Just 2, ListComp () <$> genWhitespaces <*> genComprehension <*> genWhitespaces)
   ]
 
-genCompFor :: MonadGen m => m (CompFor '[] ())
+genCompFor :: (MonadGen m, Alternative m) => m (CompFor '[] ())
 genCompFor =
   Gen.sized $ \n -> do
     n1 <- Gen.integral (Range.constant 1 $ n-1)
@@ -176,11 +176,11 @@ genCompFor =
       genExpr
       genExpr
 
-genCompIf :: MonadGen m => m (CompIf '[] ())
+genCompIf :: (MonadGen m, Alternative m) => m (CompIf '[] ())
 genCompIf =
   CompIf () <$> fmap NonEmpty.toList genWhitespaces1 <*> genExpr
 
-genComprehension :: MonadGen m => m (Comprehension '[] ())
+genComprehension :: (MonadGen m, Alternative m) => m (Comprehension '[] ())
 genComprehension =
   sized3
     (Comprehension ())
@@ -192,7 +192,7 @@ genComprehension =
           , Right . set whitespaceAfter [Space] <$> genCompIf
           ]))
 
-genSmallStatement :: MonadGen m => m (SmallStatement '[] ())
+genSmallStatement :: (MonadGen m, Alternative m) => m (SmallStatement '[] ())
 genSmallStatement =
   thresholds
   [ (Nothing, pure $ Pass ())
@@ -229,9 +229,7 @@ genSmallStatement =
     )
   ]
 
-genCompoundStatement
-  :: MonadGen m
-  => m (CompoundStatement '[] ())
+genCompoundStatement :: (MonadGen m, Alternative m) => m (CompoundStatement '[] ())
 genCompoundStatement =
   Gen.choice
     [ sized2M
@@ -323,7 +321,7 @@ genCompoundStatement =
          (,,,) <$> genWhitespaces <*> genWhitespaces <*> genNewline <*> genBlock)
     ]
 
-genStatement :: MonadGen m => m (Statement '[] ())
+genStatement :: (MonadGen m, Alternative m) => m (Statement '[] ())
 genStatement =
   Gen.choice
   [ sized2M
@@ -333,7 +331,7 @@ genStatement =
   , CompoundStatement <$> genCompoundStatement
   ]
 
-genModule :: MonadGen m => m (Module '[] ())
+genModule :: (MonadGen m, Alternative m) => m (Module '[] ())
 genModule =
   Module <$>
   sizedList

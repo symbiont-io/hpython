@@ -55,7 +55,7 @@ localState m = do
   put a
   pure b
 
-genIdent :: MonadGen m => m (Ident '[] ())
+genIdent :: (MonadGen m, Alternative m) => m (Ident '[] ())
 genIdent =
   Gen.filter (\i -> _identValue i `notElem` reservedWords) $
   MkIdent () <$>
@@ -64,7 +64,7 @@ genIdent =
     (Gen.list (Range.constant 0 49) (Gen.choice [Gen.alphaNum, pure '_'])) <*>
   genWhitespaces
 
-genModuleName :: MonadGen m => m (ModuleName '[] ())
+genModuleName :: (MonadGen m, Alternative m) => m (ModuleName '[] ())
 genModuleName =
   Gen.recursive Gen.choice
   [ ModuleNameOne () <$> genIdent ]
@@ -74,7 +74,7 @@ genModuleName =
     genModuleName
   ]
 
-genRelativeModuleName :: MonadGen m => m (RelativeModuleName '[] ())
+genRelativeModuleName :: (MonadGen m, Alternative m) => m (RelativeModuleName '[] ())
 genRelativeModuleName =
   Gen.choice
   [ Relative <$>
@@ -85,7 +85,7 @@ genRelativeModuleName =
     genModuleName
   ]
 
-genImportTargets :: MonadGen m => m (ImportTargets '[] ())
+genImportTargets :: (MonadGen m, Alternative m) => m (ImportTargets '[] ())
 genImportTargets =
   thresholds
   [ (Nothing, ImportAll () <$> genWhitespaces)
@@ -101,10 +101,10 @@ genImportTargets =
     )
   ]
 
-genInt :: MonadGen m => m (Expr '[] ())
+genInt :: (MonadGen m, Alternative m) => m (Expr '[] ())
 genInt = Int () <$> Gen.integral (Range.constant 0 (2^32)) <*> genWhitespaces
 
-genBlock :: (MonadGen m, MonadState GenState m) => m (Block '[] ())
+genBlock :: (MonadGen m, Alternative m, MonadState GenState m) => m (Block '[] ())
 genBlock = do
   indent <- NonEmpty.toList <$> genWhitespaces1
   go indent
@@ -131,7 +131,7 @@ genBlock = do
           b <- Gen.resize n'' (go indent)
           pure . Block $ NonEmpty.cons ((), indent, s1) (unBlock b)
 
-genPositionalArg :: MonadGen m => m (Arg '[] ())
+genPositionalArg :: (MonadGen m, Alternative m) => m (Arg '[] ())
 genPositionalArg =
   Gen.scale (max 0 . subtract 1) $
   Gen.choice
@@ -139,7 +139,7 @@ genPositionalArg =
     , StarArg () <$> genWhitespaces <*> genExpr
     ]
 
-genKeywordArg :: MonadGen m => m (Arg '[] ())
+genKeywordArg :: (MonadGen m, Alternative m) => m (Arg '[] ())
 genKeywordArg =
   Gen.scale (max 0 . subtract 1) $
   Gen.choice
@@ -147,7 +147,7 @@ genKeywordArg =
     , DoubleStarArg () <$> genWhitespaces <*> genExpr
     ]
 
-genArgs :: MonadGen m => m (CommaSep (Arg '[] ()))
+genArgs :: (MonadGen m, Alternative m) => m (CommaSep (Arg '[] ()))
 genArgs =
   Gen.sized $ \n -> do
     n1 <- Gen.integral (Range.constant 0 n)
@@ -159,7 +159,7 @@ genArgs =
 
     pure $ appendCommaSep pargs kwargs
 
-genArgs1 :: MonadGen m => m (CommaSep1 (Arg '[] ()))
+genArgs1 :: (MonadGen m, Alternative m) => m (CommaSep1 (Arg '[] ()))
 genArgs1 =
   Gen.sized $ \n -> do
     n1 <- Gen.integral (Range.constant 1 (n-1))
@@ -169,7 +169,7 @@ genArgs1 =
 
     pure $ pargs <> kwargs
 
-genPositionalParams :: MonadGen m => m (CommaSep (Param '[] ()))
+genPositionalParams :: (MonadGen m, Alternative m) => m (CommaSep (Param '[] ()))
 genPositionalParams =
   Gen.scale (max 0 . subtract 1) $
   Gen.sized $ fmap (listToCommaSep . fmap (PositionalParam ())) . go []
@@ -179,7 +179,7 @@ genPositionalParams =
       i <- Gen.filter ((`notElem` seen) . _identValue) genIdent
       (i :) <$> go (_identValue i : seen) (n-1)
 
-genKeywordParam :: MonadGen m => [String] -> m (Param '[] ())
+genKeywordParam :: (MonadGen m, Alternative m) => [String] -> m (Param '[] ())
 genKeywordParam positionals =
   Gen.scale (max 0 . subtract 1) $
   KeywordParam () <$>
@@ -187,21 +187,21 @@ genKeywordParam positionals =
   genWhitespaces <*>
   genExpr
 
-genStarParam :: MonadGen m => [String] -> m (Param '[] ())
+genStarParam :: (MonadGen m, Alternative m) => [String] -> m (Param '[] ())
 genStarParam positionals =
   Gen.scale (max 0 . subtract 1) $
   StarParam () <$>
   genWhitespaces <*>
   Gen.filter (\i -> _identValue i `notElem` positionals) genIdent
 
-genDoubleStarParam :: MonadGen m => [String] -> m (Param '[] ())
+genDoubleStarParam :: (MonadGen m, Alternative m) => [String] -> m (Param '[] ())
 genDoubleStarParam positionals =
   Gen.scale (max 0 . subtract 1) $
   DoubleStarParam () <$>
   genWhitespaces <*>
   Gen.filter (\i -> _identValue i `notElem` positionals) genIdent
 
-genParams :: MonadGen m => m (CommaSep (Param '[] ()))
+genParams :: (MonadGen m, Alternative m) => m (CommaSep (Param '[] ()))
 genParams =
   Gen.sized $ \n -> do
     n1 <- Gen.integral (Range.constant 0 n)
@@ -226,7 +226,7 @@ genParams =
         (pparams `appendCommaSep` maybe CommaSepNone CommaSepOne sp)
         (kwparams `appendCommaSep` maybe CommaSepNone CommaSepOne dsp)
 
-genList :: MonadGen m => m (Expr '[] ()) -> m (Expr '[] ())
+genList :: (MonadGen m, Alternative m) => m (Expr '[] ()) -> m (Expr '[] ())
 genList genExpr' =
   Gen.shrink
     (\case
@@ -237,10 +237,10 @@ genList genExpr' =
   genCommaSep genExpr' <*>
   genWhitespaces
 
-genParens :: MonadGen m => m (Expr '[] ()) -> m (Expr '[] ())
+genParens :: (MonadGen m, Alternative m) => m (Expr '[] ()) -> m (Expr '[] ())
 genParens genExpr' = Parens () <$> genWhitespaces <*> genExpr' <*> genWhitespaces
 
-genDeref :: MonadGen m => m (Expr '[] ())
+genDeref :: (MonadGen m, Alternative m) => m (Expr '[] ())
 genDeref =
   Gen.subtermM
     genExpr
@@ -251,13 +251,13 @@ genDeref =
 
 -- | This is necessary to prevent generating exponentials that will take forever to evaluate
 -- when python does constant folding
-genExpr :: MonadGen m => m (Expr '[] ())
+genExpr :: (MonadGen m, Alternative m) => m (Expr '[] ())
 genExpr = genExpr' False Nothing
 
-genExprIdents :: MonadGen m => [Ident '[] ()] -> m (Expr '[] ())
+genExprIdents :: (MonadGen m, Alternative m) => [Ident '[] ()] -> m (Expr '[] ())
 genExprIdents is = genExpr' False (Just is)
 
-genExpr' :: MonadGen m => Bool -> Maybe [Ident '[] ()] -> m (Expr '[] ())
+genExpr' :: (MonadGen m, Alternative m) => Bool -> Maybe [Ident '[] ()] -> m (Expr '[] ())
 genExpr' isExp idents = Gen.sized $ \n ->
   if n <= 1
   then
@@ -297,7 +297,7 @@ genExpr' isExp idents = Gen.sized $ \n ->
       , ListComp () <$> genWhitespaces <*> genComprehension <*> genWhitespaces
       ]
 
-genCompFor :: MonadGen m => m ([Ident '[] ()], CompFor '[] ())
+genCompFor :: (MonadGen m, Alternative m) => m ([Ident '[] ()], CompFor '[] ())
 genCompFor =
   Gen.sized $ \n -> do
     n1 <- Gen.integral (Range.constant 1 $ n-1)
@@ -310,11 +310,11 @@ genCompFor =
       fmap NonEmpty.toList genWhitespaces1 <*>
       Gen.resize n2 genExpr
 
-genCompIf :: MonadGen m => m (CompIf '[] ())
+genCompIf :: (MonadGen m, Alternative m) => m (CompIf '[] ())
 genCompIf =
   CompIf () <$> fmap NonEmpty.toList genWhitespaces1 <*> genExpr
 
-genComprehension :: MonadGen m => m (Comprehension '[] ())
+genComprehension :: (MonadGen m, Alternative m) => m (Comprehension '[] ())
 genComprehension =
   Gen.scale (max 0 . subtract 1) .
   Gen.sized $ \n -> do
@@ -337,7 +337,7 @@ genComprehension =
       pure cf <*>
       pure conds'
 
-genAssignable :: MonadGen m => m (Expr '[] ())
+genAssignable :: (MonadGen m, Alternative m) => m (Expr '[] ())
 genAssignable =
   Gen.scale (max 0 . subtract 1) $
   Gen.choice
@@ -349,7 +349,7 @@ genAssignable =
     ]
 
 genSmallStatement
-  :: (HasCallStack, MonadGen m, MonadState GenState m)
+  :: (HasCallStack, MonadGen m, Alternative m, MonadState GenState m)
   => m (SmallStatement '[] ())
 genSmallStatement = Gen.sized $ \n -> do
   ctxt <- get
@@ -411,7 +411,7 @@ genSmallStatement = Gen.sized $ \n -> do
         ]
 
 genCompoundStatement
-  :: (HasCallStack, MonadGen m, MonadState GenState m)
+  :: (HasCallStack, MonadGen m, Alternative m, MonadState GenState m)
   => m (CompoundStatement '[] ())
 genCompoundStatement =
   Gen.sized $ \n ->
@@ -545,7 +545,7 @@ genCompoundStatement =
     ]
 
 genStatement
-  :: (HasCallStack, MonadGen m, MonadState GenState m)
+  :: (HasCallStack, MonadGen m, Alternative m, MonadState GenState m)
   => m (Statement '[] ())
 genStatement =
   Gen.sized $ \n ->
