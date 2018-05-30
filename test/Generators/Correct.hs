@@ -30,6 +30,7 @@ import Language.Python.Internal.Optics
 import Language.Python.Internal.Syntax
 
 import Generators.Common
+import Generators.Sized
 
 initialGenState =
   GenState
@@ -86,14 +87,18 @@ genRelativeModuleName =
 
 genImportTargets :: MonadGen m => m (ImportTargets '[] ())
 genImportTargets =
-  Gen.choice
-  [ ImportAll () <$> genWhitespaces
-  , ImportSome () <$>
-    genSizedCommaSep1 (genImportAs genIdent genIdent)
-  , ImportSomeParens () <$>
-    genWhitespaces <*>
-    genSizedCommaSep1' (genImportAs genIdent genIdent) <*>
-    genWhitespaces
+  thresholds
+  [ (Nothing, ImportAll () <$> genWhitespaces)
+  , ( Just 2
+    , ImportSome () <$>
+      genCommaSep1 (genImportAs genIdent genIdent)
+    )
+  , ( Just 2
+    , ImportSomeParens () <$>
+      genWhitespaces <*>
+      genCommaSep1' (genImportAs genIdent genIdent) <*>
+      genWhitespaces
+    )
   ]
 
 genInt :: MonadGen m => m (Expr '[] ())
@@ -149,20 +154,18 @@ genArgs =
     n2 <- Gen.integral (Range.constant 0 $ n-n1)
     let n3 = n - n1 - n2
 
-    pargs <- Gen.resize n1 $ genSizedCommaSep genPositionalArg
-    kwargs <- Gen.resize n3 $ genSizedCommaSep genKeywordArg
+    pargs <- Gen.resize n1 $ genCommaSep genPositionalArg
+    kwargs <- Gen.resize n3 $ genCommaSep genKeywordArg
 
     pure $ appendCommaSep pargs kwargs
 
 genArgs1 :: MonadGen m => m (CommaSep1 (Arg '[] ()))
 genArgs1 =
   Gen.sized $ \n -> do
-    n1 <- Gen.integral (Range.constant 0 n)
-    n2 <- Gen.integral (Range.constant 0 $ n-n1)
-    let n3 = n - n1 - n2
+    n1 <- Gen.integral (Range.constant 1 (n-1))
 
-    pargs <- Gen.resize n1 $ genSizedCommaSep1 genPositionalArg
-    kwargs <- Gen.resize n3 $ genSizedCommaSep1 genKeywordArg
+    pargs <- Gen.resize n1 $ genCommaSep1 genPositionalArg
+    kwargs <- Gen.resize (n-n1) $ genCommaSep1 genKeywordArg
 
     pure $ pargs <> kwargs
 
@@ -213,7 +216,7 @@ genParams =
       pparamNames' = pparamNames <> (sp ^.. _Just.paramName.identValue)
     kwparams <-
       Gen.resize n3 $
-      genSizedCommaSep (genKeywordParam pparamNames')
+      genCommaSep (genKeywordParam pparamNames')
     let
       pparamNames'' = pparamNames' <> kwparams ^.. folded.paramName.identValue
     dsp <- Gen.maybe $ genDoubleStarParam pparamNames''
@@ -231,7 +234,7 @@ genList genExpr' =
         _ -> []) $
   List () <$>
   genWhitespaces <*>
-  genSizedCommaSep genExpr' <*>
+  genCommaSep genExpr' <*>
   genWhitespaces
 
 genParens :: MonadGen m => m (Expr '[] ()) -> m (Expr '[] ())
@@ -370,15 +373,15 @@ genSmallStatement = Gen.sized $ \n -> do
             n' <- Gen.integral (Range.constant 2 (n-1))
             Global () <$>
               genWhitespaces1 <*>
-              Gen.resize n' (genSizedCommaSep1 genIdent)
+              Gen.resize n' (genCommaSep1 genIdent)
         , Gen.sized $ \n -> do
             n' <- Gen.integral (Range.constant 2 (n-1))
             Del () <$>
               genWhitespaces1 <*>
-              Gen.resize n' (genSizedCommaSep1 genIdent)
+              Gen.resize n' (genCommaSep1 genIdent)
         , Import () <$>
           genWhitespaces1 <*>
-          genSizedCommaSep1 (genImportAs genModuleName genIdent)
+          genCommaSep1 (genImportAs genModuleName genIdent)
         , From () <$>
           genWhitespaces <*>
           (genRelativeModuleName & mapped.whitespaceAfter .~ [Space]) <*>
@@ -398,7 +401,7 @@ genSmallStatement = Gen.sized $ \n -> do
             nonlocals <- use currentNonlocals
             Nonlocal () <$>
               genWhitespaces1 <*>
-              Gen.resize n' (genSizedCommaSep1 . Gen.element $ MkIdent () <$> nonlocals <*> pure [])
+              Gen.resize n' (genCommaSep1 . Gen.element $ MkIdent () <$> nonlocals <*> pure [])
         | isJust (_inFunction ctxt) && not (null nonlocals)
         ] ++
         [ Return () <$>
