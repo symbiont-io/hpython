@@ -2,6 +2,7 @@
 module Generators.Sized where
 
 import Data.List.NonEmpty (NonEmpty(..))
+import Data.Semigroup ((<>))
 
 import Hedgehog
 import qualified Hedgehog.Gen as Gen
@@ -110,11 +111,11 @@ sizedMaybe ma =
   Gen.sized $ \n ->
     if n == 0 then pure Nothing else Gen.maybe (Gen.resize (n-1) ma)
 
-thresholds :: (HasCallStack, MonadGen m) => [(Maybe Size, m a)] -> m a
-thresholds [] = error "empty list in thresholds"
-thresholds mas =
-  Gen.sized $ \n -> do
-    let mas' = filter (maybe True (n >=) . fst) mas
-    case fmap (\(_, ma) -> Gen.scale (max 0 . subtract 1) ma) mas' of
-      [] -> Gen.discard
-      mas'' -> Gen.choice mas''
+sizedRecursive :: (HasCallStack, MonadGen m) => [m a] -> [m a] -> m a
+sizedRecursive bases recs =
+  Gen.sized $ \n ->
+  Gen.scale (max 0 . subtract 1) $
+  case bases of
+    [] -> Gen.choice recs
+    _ | n == 0 -> Gen.choice bases
+      | otherwise -> Gen.choice $ bases <> recs

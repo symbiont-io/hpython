@@ -13,14 +13,17 @@ import Language.Python.Validate.Syntax.Error
 import Scope
 import Roundtrip
 
+import Generators.Common (GenWhitespaces(..), genWhitespaces, genWhitespaces1)
 import qualified Generators.General as General
 import qualified Generators.Correct as Correct
 
 import Control.Lens
 import Control.Monad.IO.Class
 import Control.Monad.State
+import Control.Monad.Reader (runReaderT)
 import Data.Functor
 import Data.List
+import Data.List.NonEmpty (NonEmpty(..))
 import Data.Validate
 import System.Directory
 import System.Exit
@@ -78,10 +81,16 @@ runPython3 path shouldSucceed str = do
     (False, ExitSuccess) -> failure
     (False, ExitFailure{}) -> success
 
-syntax_expr :: FilePath -> Property
-syntax_expr path =
+simpleWs :: GenWhitespaces
+simpleWs = GenWhitespaces (pure [Space]) (pure $ Space :| [])
+
+complexWs :: GenWhitespaces
+complexWs = GenWhitespaces genWhitespaces genWhitespaces1
+
+syntax_expr :: FilePath -> GenWhitespaces -> Property
+syntax_expr path genWs =
   property $ do
-    ex <- forAll $ Gen.resize 300 General.genExpr
+    ex <- forAll . Gen.resize 300 $ runReaderT General.genExpr genWs
     let rex = renderExpr ex
     shouldSucceed <-
       case validateExprIndentation' ex of
@@ -102,10 +111,10 @@ syntax_expr path =
       shouldSucceed
       rex
 
-syntax_statement :: FilePath -> Property
-syntax_statement path =
+syntax_statement :: FilePath -> GenWhitespaces -> Property
+syntax_statement path genWs =
   property $ do
-    st <- forAll $ Gen.resize 300 General.genStatement
+    st <- forAll $ Gen.resize 300 $ runReaderT General.genStatement genWs
     let rst = renderLines $ renderStatement st
     shouldSucceed <-
       case validateStatementIndentation' st of
@@ -123,10 +132,10 @@ syntax_statement path =
     annotate rst
     runPython3 path shouldSucceed rst
 
-syntax_module :: FilePath -> Property
-syntax_module path =
+syntax_module :: FilePath -> GenWhitespaces -> Property
+syntax_module path genWs =
   property $ do
-    st <- forAll $ Gen.resize 300 General.genModule
+    st <- forAll . Gen.resize 300 $ runReaderT General.genModule genWs
     let rst = renderModule st
     shouldSucceed <-
       case validateModuleIndentation' st of
@@ -222,9 +231,12 @@ statement_printparse_id =
 
 main = do
   let file = "hedgehog-test.py"
-  check $ syntax_expr file
-  check $ syntax_statement file
-  check $ syntax_module file
+  check $ syntax_expr file simpleWs
+  check $ syntax_expr file complexWs
+  check $ syntax_statement file simpleWs
+  check $ syntax_statement file complexWs
+  check $ syntax_module file simpleWs
+  check $ syntax_module file complexWs
   check $ correct_syntax_expr file
   check $ correct_syntax_statement file
   check expr_printparseprint_print

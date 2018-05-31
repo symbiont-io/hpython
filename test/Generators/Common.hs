@@ -1,5 +1,8 @@
 {-# language DataKinds #-}
+{-# language FlexibleContexts #-}
 module Generators.Common where
+
+import Control.Monad.Reader (MonadReader, ask)
 
 import Hedgehog
 import qualified Hedgehog.Gen as Gen
@@ -10,6 +13,21 @@ import Data.List.NonEmpty (NonEmpty(..))
 import Language.Python.Internal.Syntax
 
 import Generators.Sized
+
+data GenWhitespaces
+  = GenWhitespaces
+      (Gen [Whitespace])
+      (Gen (NonEmpty Whitespace))
+
+whitespaces :: (MonadGen m, MonadReader GenWhitespaces m) => m [Whitespace]
+whitespaces = do
+  GenWhitespaces ws _ <- ask
+  Gen.lift ws
+
+whitespaces1 :: (MonadGen m, MonadReader GenWhitespaces m) => m (NonEmpty Whitespace)
+whitespaces1 = do
+  GenWhitespaces _ ws <- ask
+  Gen.lift ws
 
 genSmallInt :: MonadGen m => m (Expr '[] ())
 genSmallInt = Int () <$> Gen.integral (Range.constant 0 100) <*> genWhitespaces
@@ -100,15 +118,13 @@ genDot = Dot <$> genWhitespaces
 
 genCommaSep :: MonadGen m => m a -> m (CommaSep a)
 genCommaSep ma =
-  thresholds
-    [ (Nothing, pure CommaSepNone)
-    , (Just 1, CommaSepOne <$> ma)
-    , ( Just 1
-      , sized2M
-          (\a b -> CommaSepMany a <$> genWhitespaces <*> pure b)
-          ma
-          (genCommaSep ma)
-      )
+  sizedRecursive
+    [ pure CommaSepNone ]
+    [ CommaSepOne <$> ma
+    , sized2M
+        (\a b -> CommaSepMany a <$> genWhitespaces <*> pure b)
+        ma
+        (genCommaSep ma)
     ]
 
 genTuple :: MonadGen m => m (Expr '[] ()) -> m (Expr '[] ())
@@ -120,26 +136,22 @@ genTuple expr =
 
 genCommaSep1 :: MonadGen m => m a -> m (CommaSep1 a)
 genCommaSep1 ma =
-  thresholds
-    [ (Just 1, CommaSepOne1 <$> ma)
-    , ( Just 1
-      , sized2M
-          (\a b -> CommaSepMany1 a <$> genWhitespaces <*> pure b)
-          ma
-          (genCommaSep1 ma)
-      )
+  sizedRecursive
+    [ CommaSepOne1 <$> ma ]
+    [ sized2M
+        (\a b -> CommaSepMany1 a <$> genWhitespaces <*> pure b)
+        ma
+        (genCommaSep1 ma)
     ]
 
 genCommaSep1' :: MonadGen m => m a -> m (CommaSep1' a)
 genCommaSep1' ma =
-  thresholds
-    [ (Just 1, CommaSepOne1' <$> ma <*> Gen.maybe genWhitespaces)
-    , ( Just 1
-      , sized2M
-          (\a b -> CommaSepMany1' a <$> genWhitespaces <*> pure b)
-          ma
-          (genCommaSep1' ma)
-      )
+  sizedRecursive
+    [ CommaSepOne1' <$> ma <*> Gen.maybe genWhitespaces ]
+    [ sized2M
+        (\a b -> CommaSepMany1' a <$> genWhitespaces <*> pure b)
+        ma
+        (genCommaSep1' ma)
     ]
 
 genImportAs :: MonadGen m => m (e ()) -> m (Ident '[] ()) -> m (ImportAs e '[] ())
