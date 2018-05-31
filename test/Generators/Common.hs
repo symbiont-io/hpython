@@ -25,6 +25,7 @@ genStringType = Gen.element [ShortSingle, ShortDouble, LongSingle, LongDouble]
 
 genAnyWhitespace :: MonadGen m => m Whitespace
 genAnyWhitespace =
+  Gen.shrink shrinkWs $
   Gen.choice
     [ pure Space
     , pure Tab
@@ -35,9 +36,13 @@ genAnyWhitespace =
         (Range.constant 0 10)
         (Gen.choice [pure Space, pure Tab, Newline <$> genNewline])
     ]
+  where
+    shrinkWs Space = []
+    shrinkWs _ = [Space]
 
 genNormalWhitespace :: MonadGen m => m Whitespace
 genNormalWhitespace =
+  Gen.shrink shrinkWs $
   Gen.choice
     [ pure Space
     , pure Tab
@@ -45,6 +50,9 @@ genNormalWhitespace =
       genNewline <*>
       Gen.list (Range.constant 0 10) (Gen.element [Space, Tab])
     ]
+  where
+    shrinkWs Space = []
+    shrinkWs _ = [Space]
 
 genStringPrefix :: MonadGen m => m StringPrefix
 genStringPrefix =

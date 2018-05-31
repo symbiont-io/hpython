@@ -148,6 +148,7 @@ correct_syntax_expr :: FilePath -> Property
 correct_syntax_expr path =
   property $ do
     ex <- forAll Correct.genExpr
+    annotateShow $ renderExpr ex
     case validateExprIndentation' ex of
       Failure errs -> annotateShow errs *> failure
       Success res ->
@@ -221,9 +222,9 @@ statement_printparse_id =
 
 main = do
   let file = "hedgehog-test.py"
-  check . withDiscards 1000 $ syntax_expr file
-  check . withDiscards 1000 $ syntax_statement file
-  check . withDiscards 1000 $ syntax_module file
+  check $ syntax_expr file
+  check $ syntax_statement file
+  check $ syntax_module file
   check $ correct_syntax_expr file
   check $ correct_syntax_statement file
   check expr_printparseprint_print

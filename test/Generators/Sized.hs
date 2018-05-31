@@ -1,7 +1,6 @@
 {-# language GeneralizedNewtypeDeriving, DeriveFunctor #-}
 module Generators.Sized where
 
-import Control.Monad (when)
 import Data.List.NonEmpty (NonEmpty(..))
 
 import Hedgehog
@@ -11,6 +10,17 @@ import qualified Hedgehog.Internal.Shrink as Shrink
 
 import GHC.Stack (HasCallStack)
 
+sizedBind
+  :: MonadGen m
+  => m a
+  -> (a -> m b)
+  -> m b
+sizedBind ma f =
+  Gen.sized $ \n -> do
+    aSize <- Gen.integral (Range.constant 0 n)
+    a <- Gen.resize aSize ma
+    Gen.resize (n - aSize) $ f a
+
 sized2M
   :: MonadGen m
   => (a -> b -> m c)
@@ -19,8 +29,7 @@ sized2M
   -> m c
 sized2M f ma mb =
   Gen.sized $ \n -> do
-    when (n < 2) Gen.discard
-    aSize <- Gen.integral (Range.constant 1 (n-1))
+    aSize <- Gen.integral (Range.constant 0 n)
     a <- Gen.resize aSize ma
     b <- Gen.resize (n - aSize) mb
     f a b
@@ -42,8 +51,7 @@ sized3M
   -> m d
 sized3M f ma mb mc =
   Gen.sized $ \n -> do
-    when (n < 3) Gen.discard
-    abSize <- Gen.integral (Range.constant 1 (n-2))
+    abSize <- Gen.integral (Range.constant 0 n)
     cd <- Gen.resize abSize $ sized2 f ma mb
     c <- Gen.resize (n - abSize) mc
     cd c
@@ -67,8 +75,7 @@ sized4M
   -> m e
 sized4M f ma mb mc md =
   Gen.sized $ \n -> do
-    when (n < 4) Gen.discard
-    abcSize <- Gen.integral (Range.constant 1 (n-3))
+    abcSize <- Gen.integral (Range.constant 0 n)
     de <- Gen.resize abcSize $ sized3 f ma mb mc
     d <- Gen.resize (n - abcSize) md
     de d
@@ -94,7 +101,6 @@ sizedNonEmpty :: MonadGen m => m a -> m (NonEmpty a)
 sizedNonEmpty ma =
   Gen.shrink (\(x :| xs) -> (x :|) <$> Shrink.list xs) $
   Gen.sized $ \n -> do
-    when (n < 1) Gen.discard
     sized2 (:|)
       ma
       (sizedList ma)
