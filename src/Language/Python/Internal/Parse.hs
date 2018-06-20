@@ -1,30 +1,33 @@
-{-# language DataKinds #-}
-{-# language FlexibleContexts #-}
-{-# language LambdaCase #-}
-{-# language GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
 module Language.Python.Internal.Parse where
 
-import Control.Lens.Fold (foldOf, folded)
-import Control.Lens.Getter ((^.))
-import Control.Monad (unless)
-import Control.Monad.Except (ExceptT(..), runExceptT, throwError)
-import Control.Monad.State
-  (StateT(..), get, put, evalStateT, runStateT)
-import Control.Monad.Writer.Strict (Writer, runWriter, writer, tell)
-import Data.Bifunctor (first)
-import Data.Foldable (toList)
-import Data.Function ((&))
-import Data.Functor (($>))
-import Data.Functor.Alt (Alt((<!>)), many, some, optional)
-import Data.Functor.Classes (liftEq)
-import Data.List (foldl')
-import Data.List.NonEmpty (NonEmpty(..))
+import           Control.Lens.Fold               (foldOf, folded)
+import           Control.Lens.Getter             ((^.))
+import           Control.Monad                   (unless)
+import           Control.Monad.Except            (ExceptT (..), runExceptT,
+                                                  throwError)
+import           Control.Monad.State             (StateT (..), evalStateT, get,
+                                                  put, runStateT)
+import           Control.Monad.Writer.Strict     (Writer, runWriter, tell,
+                                                  writer)
+import           Data.Bifunctor                  (first)
+import           Data.Foldable                   (toList)
+import           Data.Function                   ((&))
+import           Data.Functor                    (($>))
+import           Data.Functor.Alt                (Alt ((<!>)), many, optional,
+                                                  some)
+import           Data.Functor.Classes            (liftEq)
+import           Data.List                       (foldl')
+import           Data.List.NonEmpty              (NonEmpty (..))
 
-import qualified Data.List.NonEmpty as NonEmpty
+import qualified Data.List.NonEmpty              as NonEmpty
 
-import Language.Python.Internal.Lexer
-import Language.Python.Internal.Syntax
-import Language.Python.Internal.Token
+import           Language.Python.Internal.Lexer
+import           Language.Python.Internal.Syntax
+import           Language.Python.Internal.Token
 
 some1 :: (Alt f, Applicative f) => f a -> f (NonEmpty a)
 some1 a = (:|) <$> a <*> many a
@@ -71,7 +74,7 @@ instance Alt (Parser ann) where
       if b
         then StateT $ \_ -> ExceptT (writer (res, Consumed b))
         else case res of
-          Left{} -> pb
+          Left{}         -> pb
           Right (a, st') -> put st' $> a
 
 runParser :: Parser ann a -> Nested ann -> Either (ParseError ann) a
@@ -95,7 +98,7 @@ currentToken = Parser $ do
             [tk] | Nothing <- nl -> do
               put $ case rest' of
                 [] -> rest
-                _ -> rest' : rest
+                _  -> rest' : rest
               pure tk
             tk : rest'' ->
               put ((Right (ll { lineLine = rest'' }) : rest') : rest) $> tk
@@ -124,8 +127,8 @@ eof :: Parser ann ()
 eof = Parser $ do
   ctxt <- get
   case ctxt of
-    [] -> tell $ Consumed True
-    [[]] -> tell $ Consumed True
+    []          -> tell $ Consumed True
+    [[]]        -> tell $ Consumed True
     current : _ -> throwError $ ExpectedEndOfInput current
 
 indent :: Parser ann ()
@@ -149,7 +152,7 @@ dedent = Parser $ do
     current : rest ->
       case current of
         [] -> put rest *> tell (Consumed True)
-        _ -> throwError $ ExpectedEndOfBlock current
+        _  -> throwError $ ExpectedEndOfBlock current
 
 continued :: Parser ann Whitespace
 continued = do
@@ -213,9 +216,9 @@ bool ws =
      Bool
        (pyTokenAnn tk)
        (case tk of
-          TkTrue{} -> True
+          TkTrue{}  -> True
           TkFalse{} -> False
-          _ -> error "impossible")
+          _         -> error "impossible")
        s) <$>
   (token ws (TkTrue ()) <!> token ws (TkFalse ()))
 
@@ -259,9 +262,9 @@ indents = Parser $ do
     [] -> throwError UnexpectedEndOfInput
     current : rest ->
       case current of
-        [] -> throwError UnexpectedEndOfBlock
+        []                               -> throwError UnexpectedEndOfBlock
         Right ll@(Line a is _ _) : rest' -> pure $ Indents is a
-        Left l : _ -> throwError UnexpectedIndent
+        Left l : _                       -> throwError UnexpectedIndent
 
 exprList :: Parser ann Whitespace -> Parser ann (Expr '[] ann)
 exprList ws =
@@ -509,7 +512,7 @@ sepBy1' val sep = go
            Nothing -> (a, [], Nothing)
            Just (sc, b') ->
              case b' of
-               Nothing -> (a, [], Just sc)
+               Nothing            -> (a, [], Just sc)
                Just (a', ls, sc') -> (a, (sc, a') : ls, sc')) <$>
       val <*>
       optional ((,) <$> sep <*> optional go)
@@ -531,7 +534,7 @@ statement =
            Nothing -> (a, [], Nothing)
            Just (sc, b') ->
              case b' of
-               Nothing -> (a, [], Just sc)
+               Nothing            -> (a, [], Just sc)
                Just (a', ls, sc') -> (a, (sc, a') : ls, sc')) <$>
       smallStatement <*>
       smallst2
@@ -612,17 +615,24 @@ commaSep1' :: Parser ann Whitespace -> Parser ann a -> Parser ann (CommaSep1' a)
 commaSep1' ws pa =
   (\(a, b, c) -> from a b c) <$> sepBy1' pa (snd <$> comma ws)
   where
-    from a [] b = CommaSepOne1' a b
+    from a [] b            = CommaSepOne1' a b
     from a ((b, c) : bs) d = CommaSepMany1' a b $ from c bs d
 
 param :: Parser ann (Param '[] ann)
 param =
-  (\a ->
-     maybe
-       (PositionalParam (_identAnnotation a) a)
-       (uncurry $ KeywordParam (_identAnnotation a) a)) <$>
-  identifier anySpace <*>
-  optional ((,) <$> (snd <$> token anySpace (TkEq ())) <*> expr anySpace)
+  do
+    a <- identifier anySpace
+    op <- optional ((,) <$> (snd <$> token anySpace (TkEq ())) <*> expr anySpace)
+    case op of
+      Nothing     -> pure $ PositionalParam (_identAnnotation a ) a Nothing
+      Just (w, e) -> pure $ KeywordParam (_identAnnotation a) a w Nothing e
+--  (\a ->
+--     maybe
+--       (PositionalParam (_identAnnotation a) a)
+--       (uncurry $ KeywordParam (_identAnnotation a) a)) <$>
+  --optional ((,) <$> (snd <$> token anySpace (TkCollon ())) <*> identifier anySpace) <*>
+--  identifier anySpace <*>
+--  optional ((,) <$> (snd <$> token anySpace (TkEq ())) <*> expr anySpace)
 
   <!>
 

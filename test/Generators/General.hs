@@ -1,34 +1,35 @@
-{-# language DataKinds, TypeFamilies #-}
-{-# language LambdaCase #-}
+{-# LANGUAGE DataKinds    #-}
+{-# LANGUAGE LambdaCase   #-}
+{-# LANGUAGE TypeFamilies #-}
 module Generators.General where
 
-import Control.Applicative
-import Control.Lens.Cons
-import Control.Lens.Fold
-import Control.Lens.Getter
-import Control.Lens.Iso (from)
-import Control.Lens.Wrapped
-import Control.Monad (replicateM)
-import Data.Foldable (toList)
-import Data.List.NonEmpty (NonEmpty(..))
+import           Control.Applicative
+import           Control.Lens.Cons
+import           Control.Lens.Fold
+import           Control.Lens.Getter
+import           Control.Lens.Iso                (from)
+import           Control.Lens.Wrapped
+import           Control.Monad                   (replicateM)
+import           Data.Foldable                   (toList)
+import           Data.List.NonEmpty              (NonEmpty (..))
 
-import Hedgehog
-import qualified Hedgehog.Gen as Gen
-import qualified Hedgehog.Range as Range
+import           Hedgehog
+import qualified Hedgehog.Gen                    as Gen
+import qualified Hedgehog.Range                  as Range
 
-import qualified Data.List.NonEmpty as NonEmpty
+import qualified Data.List.NonEmpty              as NonEmpty
 
-import Language.Python.Internal.Syntax
-import Generators.Common
+import           Generators.Common
+import           Language.Python.Internal.Syntax
 
 genParam :: MonadGen m => m (Expr '[] ()) -> m (Param '[] ())
 genParam genExpr = Gen.sized $ \n ->
   Gen.choice $
     (if n <= 1
-     then PositionalParam () <$> genIdent
+     then PositionalParam () <$> genIdent <*> pure Nothing
      else
        Gen.resize (n-1) $
-       KeywordParam () <$> genIdent <*> genWhitespaces <*> genExpr) :
+       KeywordParam () <$> genIdent <*> genWhitespaces <*> pure Nothing <*> genExpr) :
     [ StarParam () <$> genWhitespaces <*> genIdent
     , DoubleStarParam () <$> genWhitespaces <*> genIdent
     ]

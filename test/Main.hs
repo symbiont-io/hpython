@@ -1,35 +1,37 @@
-{-# language DataKinds, TypeOperators, FlexibleContexts #-}
+{-# LANGUAGE DataKinds        #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeOperators    #-}
 module Main where
 
-import Language.Python.Internal.Optics
-import Language.Python.Internal.Parse
-import Language.Python.Internal.Render
-import Language.Python.Internal.Syntax
-import Language.Python.Validate.Indentation
-import Language.Python.Validate.Indentation.Error
-import Language.Python.Validate.Syntax
-import Language.Python.Validate.Syntax.Error
+import           Language.Python.Internal.Optics
+import           Language.Python.Internal.Parse
+import           Language.Python.Internal.Render
+import           Language.Python.Internal.Syntax
+import           Language.Python.Validate.Indentation
+import           Language.Python.Validate.Indentation.Error
+import           Language.Python.Validate.Syntax
+import           Language.Python.Validate.Syntax.Error
 
-import LexerParser
-import Scope
-import Roundtrip
-import Helpers (doToPython)
+import           Helpers                                    (doToPython)
+--import           LexerParser
+import           Roundtrip
+--import           Scope
 
-import qualified Generators.General as General
-import qualified Generators.Correct as Correct
+import qualified Generators.Correct                         as Correct
+import qualified Generators.General                         as General
 
-import Control.Lens
-import Control.Monad.IO.Class
-import Control.Monad.State
-import Data.Functor
-import Data.List
-import Data.Validate
-import System.Directory
-import System.Exit
-import System.Process
+import           Control.Lens
+import           Control.Monad.IO.Class
+import           Control.Monad.State
+import           Data.Functor
+import           Data.List
+import           Data.Validate
+--import           System.Directory
+import           System.Exit
+import           System.Process
 
-import Hedgehog
-import qualified Hedgehog.Gen as Gen
+import           Hedgehog
+import qualified Hedgehog.Gen                               as Gen
 
 validateExprSyntax'
   :: Expr '[Indentation] a
@@ -89,9 +91,9 @@ syntax_expr path =
         Failure errs -> annotateShow errs $> False
         Success res ->
           case validateExprSyntax' res of
-            Failure [] -> pure True
+            Failure []     -> pure True
             Failure errs'' -> annotateShow errs'' $> False
-            Success res' -> pure True
+            Success res'   -> pure True
     annotate rex
     runPython3
       path
@@ -108,9 +110,9 @@ syntax_statement path =
         Failure errs -> annotateShow errs $> False
         Success res ->
           case validateStatementSyntax' res of
-            Failure [] -> pure True
+            Failure []     -> pure True
             Failure errs'' -> annotateShow errs'' $> False
-            Success res' -> pure True
+            Success res'   -> pure True
     annotate rst
     runPython3 path shouldSucceed rst
 
@@ -124,9 +126,9 @@ syntax_module path =
         Failure errs -> annotateShow errs $> False
         Success res ->
           case validateModuleSyntax' res of
-            Failure [] -> pure True
+            Failure []     -> pure True
             Failure errs'' -> annotateShow errs'' $> False
-            Success res' -> pure True
+            Success res'   -> pure True
     annotate rst
     runPython3 path shouldSucceed rst
 
@@ -139,7 +141,7 @@ correct_syntax_expr path =
       Success res ->
         case validateExprSyntax' res of
           Failure errs' -> annotateShow errs' *> failure
-          Success res' -> runPython3 path True (showExpr ex)
+          Success res'  -> runPython3 path True (showExpr ex)
 
 correct_syntax_statement :: FilePath -> Property
 correct_syntax_statement path =
@@ -151,7 +153,7 @@ correct_syntax_statement path =
       Success res ->
         case validateStatementSyntax' res of
           Failure errs' -> annotateShow errs' *> failure
-          Success res' -> runPython3 path True $ showStatement st
+          Success res'  -> runPython3 path True $ showStatement st
 
 expr_printparseprint_print :: Property
 expr_printparseprint_print =
@@ -183,15 +185,15 @@ statement_printparseprint_print =
               showStatement (py $> ())
 
 main = do
-  checkParallel lexerParserTests
-  let file = "hedgehog-test.py"
-  check . withTests 200 $ syntax_expr file
-  check . withTests 200 $ syntax_statement file
-  check . withTests 200 $ syntax_module file
-  check . withTests 200 $ correct_syntax_expr file
-  check . withTests 200 $ correct_syntax_statement file
-  check expr_printparseprint_print
-  check . withShrinks 2000 $ statement_printparseprint_print
-  checkParallel scopeTests
   checkParallel roundtripTests
-  removeFile "hedgehog-test.py"
+--  checkParallel lexerParserTests
+--  let file = "hedgehog-test.py"
+--  check . withTests 200 $ syntax_expr file
+--  check . withTests 200 $ syntax_statement file
+--  check . withTests 200 $ syntax_module file
+--  check . withTests 200 $ correct_syntax_expr file
+--  check . withTests 200 $ correct_syntax_statement file
+--  check expr_printparseprint_print
+--  check . withShrinks 2000 $ statement_printparseprint_print
+--  checkParallel scopeTests
+--  removeFile "hedgehog-test.py"

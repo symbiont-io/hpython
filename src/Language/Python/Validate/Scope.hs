@@ -1,37 +1,42 @@
-{-# language DataKinds, TypeOperators #-}
-{-# language GeneralizedNewtypeDeriving #-}
-{-# language TemplateHaskell, TypeFamilies, FlexibleInstances, MultiParamTypeClasses #-}
-{-# language FlexibleContexts #-}
-{-# language RankNTypes #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
 module Language.Python.Validate.Scope where
 
-import Control.Arrow ((&&&))
-import Control.Applicative ((<|>))
-import Control.Lens.Fold ((^..), toListOf, folded)
-import Control.Lens.Getter ((^.), to, getting, use)
-import Control.Lens.Lens (Lens')
-import Control.Lens.Plated (cosmos)
-import Control.Lens.Prism (_Right, _Just)
-import Control.Lens.Review ((#))
-import Control.Lens.Setter ((%~), (.~), Setter', mapped, over)
-import Control.Lens.TH (makeLenses)
-import Control.Lens.Tuple (_2, _5)
-import Control.Lens.Traversal (traverseOf)
-import Control.Lens.Wrapped (_Wrapped)
-import Control.Monad.State (State, modify, evalState)
-import Data.Bitraversable (bitraverse)
-import Data.Coerce (coerce)
-import Data.Functor.Compose (Compose(..))
-import Data.String (fromString)
-import Data.Type.Set (Nub)
-import Data.Trie (Trie)
-import Data.Validate (Validate(..))
+import           Control.Applicative                  ((<|>))
+import           Control.Arrow                        ((&&&))
+import           Control.Lens.Fold                    (folded, toListOf, (^..))
+import           Control.Lens.Getter                  (getting, to, use, (^.))
+import           Control.Lens.Lens                    (Lens')
+import           Control.Lens.Plated                  (cosmos)
+import           Control.Lens.Prism                   (_Just, _Right)
+import           Control.Lens.Review                  (( # ))
+import           Control.Lens.Setter                  (Setter', mapped, over,
+                                                       (%~), (.~))
+import           Control.Lens.TH                      (makeLenses)
+import           Control.Lens.Traversal               (traverseOf)
+import           Control.Lens.Tuple                   (_2, _5)
+import           Control.Lens.Wrapped                 (_Wrapped)
+import           Control.Monad.State                  (State, evalState, modify)
+import           Data.Bitraversable                   (bitraverse)
+import           Data.Coerce                          (coerce)
+import           Data.Functor.Compose                 (Compose (..))
+import           Data.String                          (fromString)
+import           Data.Trie                            (Trie)
+import           Data.Type.Set                        (Nub)
+import           Data.Validate                        (Validate (..))
 
-import qualified Data.Trie as Trie
+import qualified Data.Trie                            as Trie
 
-import Language.Python.Internal.Optics
-import Language.Python.Internal.Syntax
-import Language.Python.Validate.Scope.Error
+import           Language.Python.Internal.Optics
+import           Language.Python.Internal.Syntax
+import           Language.Python.Validate.Scope.Error
 
 data Scope
 
@@ -40,8 +45,8 @@ data Binding = Clean | Dirty
 
 data ScopeContext a
   = ScopeContext
-  { _scGlobalScope :: !(Trie a)
-  , _scLocalScope :: !(Trie a)
+  { _scGlobalScope    :: !(Trie a)
+  , _scLocalScope     :: !(Trie a)
   , _scImmediateScope :: !(Trie a)
   }
   deriving (Eq, Show)
@@ -297,9 +302,9 @@ validateIdentScope i =
   inScope (_identValue i) `bindValidateScope`
   \context ->
   case context of
-    Just (Clean, _) -> pure $ coerce i
+    Just (Clean, _)   -> pure $ coerce i
     Just (Dirty, ann)-> scopeErrors [_FoundDynamic # (ann, i)]
-    Nothing -> scopeErrors [_NotInScope # i]
+    Nothing           -> scopeErrors [_NotInScope # i]
 
 validateArgScope
   :: AsScopeError e v a
@@ -318,10 +323,10 @@ validateParamScope
   :: AsScopeError e v a
   => Param v a
   -> ValidateScope a e (Param (Nub (Scope ': v)) a)
-validateParamScope (PositionalParam a ident) =
-  pure . PositionalParam a $ coerce ident
-validateParamScope (KeywordParam a ident ws2 expr) =
-  KeywordParam a (coerce ident) ws2 <$> validateExprScope expr
+validateParamScope (PositionalParam a ident t) =
+  pure $ PositionalParam a (coerce ident) Nothing
+validateParamScope (KeywordParam a ident ws2 t expr) =
+  KeywordParam a (coerce ident) ws2 (coerce t) <$> validateExprScope expr
 validateParamScope a@StarParam{} = pure $ coerce a
 validateParamScope a@DoubleStarParam{} = pure $ coerce a
 

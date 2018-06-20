@@ -1,16 +1,18 @@
-{-# language DataKinds #-}
-{-# language MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances #-}
-{-# language OverloadedLists #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE OverloadedLists        #-}
 module Language.Python.Syntax where
 
-import Data.Function ((&))
-import Control.Lens.Getter ((^.))
-import Control.Lens.Iso (from)
-import Control.Lens.Setter ((.~), over)
-import Data.List.NonEmpty (NonEmpty)
+import           Control.Lens.Getter             ((^.))
+import           Control.Lens.Iso                (from)
+import           Control.Lens.Setter             (over, (.~))
+import           Data.Function                   ((&))
+import           Data.List.NonEmpty              (NonEmpty)
 
-import Language.Python.Internal.Optics
-import Language.Python.Internal.Syntax
+import           Language.Python.Internal.Optics
+import           Language.Python.Internal.Syntax
 
 class HasPositional p v | p -> v where
   p_ :: v -> p
@@ -18,8 +20,8 @@ class HasPositional p v | p -> v where
 class HasKeyword p where
   k_ :: Ident '[] () -> Expr '[] () -> p
 
-instance HasPositional (Param '[] ()) (Ident '[] ()) where; p_ = PositionalParam ()
-instance HasKeyword (Param '[] ()) where; k_ a = KeywordParam () a []
+instance HasPositional (Param '[] ()) (Ident '[] ()) where; p_ = (\i -> PositionalParam () i Nothing)
+instance HasKeyword (Param '[] ()) where; k_ a e = KeywordParam () a [] Nothing e
 instance HasPositional (Arg '[] ()) (Expr '[] ()) where; p_ = PositionalArg ()
 instance HasKeyword (Arg '[] ()) where; k_ a = KeywordArg () a []
 

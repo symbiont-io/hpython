@@ -32,6 +32,7 @@ data KeywordParam v a
   { _kpAnn :: a
   , _kpName :: Ident v a
   , _kpWhitespaceRight :: [Whitespace]
+  , _kpType :: Maybe (Ident v a)
   , _kpExpr :: Expr v a
   } deriving (Eq, Show)
 makeLenses ''KeywordParam
@@ -44,9 +45,9 @@ _KeywordParam
        (KeywordParam '[] a)
 _KeywordParam =
   prism
-    (\(MkKeywordParam a b d e) -> KeywordParam a b d e)
+    (\(MkKeywordParam a b d t e) -> KeywordParam a b d t e)
     (\case
-        (coerce -> KeywordParam a b d e) -> Right (MkKeywordParam a b d e)
+        (coerce -> KeywordParam a b d t e) -> Right (MkKeywordParam a b d t e)
         (coerce -> a) -> Left a)
 
 _Fundef

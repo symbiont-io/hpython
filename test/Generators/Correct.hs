@@ -189,7 +189,7 @@ genArgs1 =
 genPositionalParams :: MonadGen m => m (CommaSep (Param '[] ()))
 genPositionalParams =
   Gen.scale (max 0 . subtract 1) $
-  Gen.sized $ fmap (listToCommaSep . fmap (PositionalParam ())) . go []
+  Gen.sized $ fmap (listToCommaSep . fmap (\x -> PositionalParam () x Nothing)) . go []
   where
     go seen 0 = pure []
     go seen n = do
@@ -201,7 +201,7 @@ genKeywordParam positionals =
   Gen.scale (max 0 . subtract 1) $
   KeywordParam () <$>
   Gen.filter (\i -> _identValue i `notElem` positionals) genIdent <*>
-  genWhitespaces <*>
+  genWhitespaces <*> pure Nothing <*>
   genExpr
 
 genStarParam :: MonadGen m => [String] -> m (Param '[] ())
