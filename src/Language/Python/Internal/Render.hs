@@ -1,6 +1,10 @@
-{-# language GeneralizedNewtypeDeriving, DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
-{-# language FlexibleInstances, MultiParamTypeClasses #-}
-{-# language LambdaCase #-}
+{-# LANGUAGE DeriveFoldable             #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveTraversable          #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
 module Language.Python.Internal.Render
   ( -- * Common Functions
     showModule, showStatement, showExpr
@@ -18,17 +22,17 @@ module Language.Python.Internal.Render
   )
 where
 
-import Control.Lens.Getter (view)
-import Control.Lens.Wrapped (_Wrapped)
-import Control.Lens.Plated (transform)
-import Data.Bifoldable (bifoldMap)
-import Data.Char (ord)
-import Data.Foldable (toList)
-import Data.Maybe (maybe)
-import Data.Semigroup (Semigroup(..))
+import           Control.Lens.Getter             (view)
+import           Control.Lens.Plated             (transform)
+import           Control.Lens.Wrapped            (_Wrapped)
+import           Data.Bifoldable                 (bifoldMap)
+import           Data.Char                       (ord)
+import           Data.Foldable                   (toList)
+import           Data.Maybe                      (maybe)
+import           Data.Semigroup                  (Semigroup (..))
 
-import Language.Python.Internal.Syntax
-import Language.Python.Internal.Token (PyToken(..), QuoteType(..))
+import           Language.Python.Internal.Syntax
+import           Language.Python.Internal.Token  (PyToken (..), QuoteType (..))
 
 newtype RenderOutput
   = RenderOutput
@@ -70,12 +74,12 @@ showRenderOutput =
 showStringPrefix :: StringPrefix -> String
 showStringPrefix sp =
   case sp of
-    Prefix_r -> "r"
-    Prefix_R -> "R"
-    Prefix_u -> "u"
-    Prefix_U -> "U"
-    Prefix_b -> "b"
-    Prefix_B -> "B"
+    Prefix_r  -> "r"
+    Prefix_R  -> "R"
+    Prefix_u  -> "u"
+    Prefix_U  -> "U"
+    Prefix_b  -> "b"
+    Prefix_B  -> "B"
     Prefix_br -> "br"
     Prefix_Br -> "Br"
     Prefix_bR -> "bR"
@@ -145,8 +149,8 @@ showToken t =
     TkTab{} -> "\t"
     TkNewline nl _ ->
       case nl of
-        CR -> "\r"
-        LF -> "\n"
+        CR   -> "\r"
+        LF   -> "\n"
         CRLF -> "\r\n"
     TkLeftBracket{} -> "["
     TkRightBracket{} -> "]"
@@ -164,8 +168,8 @@ showToken t =
     TkContinued nl _ ->
       "\\" <>
       case nl of
-        CR -> "\r"
-        LF -> "\n"
+        CR   -> "\r"
+        LF   -> "\n"
         CRLF -> "\r\n"
     TkColon{} -> ":"
     TkSemicolon{} -> ";"
@@ -189,7 +193,7 @@ bracketTuple :: Expr v a -> RenderOutput
 bracketTuple e =
   case e of
     Tuple{} -> bracket $ renderExpr e
-    _ -> renderExpr e
+    _       -> renderExpr e
 
 escapeChars :: [(Char, Char)]
 escapeChars =
@@ -207,23 +211,23 @@ escapeChars =
 intToHex :: Int -> String
 intToHex n = go n []
   where
-    go 0 = (++"0")
-    go 1 = (++"1")
-    go 2 = (++"2")
-    go 3 = (++"3")
-    go 4 = (++"4")
-    go 5 = (++"5")
-    go 6 = (++"6")
-    go 7 = (++"7")
-    go 8 = (++"8")
-    go 9 = (++"9")
+    go 0  = (++"0")
+    go 1  = (++"1")
+    go 2  = (++"2")
+    go 3  = (++"3")
+    go 4  = (++"4")
+    go 5  = (++"5")
+    go 6  = (++"6")
+    go 7  = (++"7")
+    go 8  = (++"8")
+    go 9  = (++"9")
     go 10 = (++"A")
     go 11 = (++"B")
     go 12 = (++"C")
     go 13 = (++"D")
     go 14 = (++"E")
     go 15 = (++"F")
-    go b = let (q, r) = quotRem b 16 in go r . go q
+    go b  = let (q, r) = quotRem b 16 in go r . go q
 
 renderChar :: Char -> String
 renderChar c
@@ -309,8 +313,8 @@ renderExpr (Not _ ws e) =
   foldMap renderWhitespace ws <>
   case e of
     BinOp _ _ BoolAnd{} _ -> bracket $ renderExpr e
-    BinOp _ _ BoolOr{} _ -> bracket $ renderExpr e
-    _ -> bracketTuple e
+    BinOp _ _ BoolOr{} _  -> bracket $ renderExpr e
+    _                     -> bracketTuple e
 renderExpr (Parens _ ws1 e ws2) =
   bracket (foldMap renderWhitespace ws1 <> renderExpr e) <>
   foldMap renderWhitespace ws2
@@ -322,14 +326,14 @@ renderExpr (Negate _ ws expr) =
   foldMap renderWhitespace ws <>
   case expr of
     BinOp _ _ Exp{} _ -> renderExpr expr
-    BinOp{} -> bracket $ renderExpr expr
-    _ -> renderExpr expr
+    BinOp{}           -> bracket $ renderExpr expr
+    _                 -> renderExpr expr
 renderExpr (String _ prefix strType b ws) =
   (case strType of
       ShortSingle -> TkShortString prefix SingleQuote b ()
       ShortDouble -> TkShortString prefix DoubleQuote b ()
-      LongSingle -> TkLongString prefix SingleQuote b ()
-      LongDouble -> TkLongString prefix DoubleQuote b ()) `cons`
+      LongSingle  -> TkLongString prefix SingleQuote b ()
+      LongDouble  -> TkLongString prefix DoubleQuote b ()) `cons`
   foldMap renderWhitespace ws
 renderExpr (Int _ n ws) = TkInt n () `cons` foldMap renderWhitespace ws
 renderExpr (Ident _ name) = renderIdent name
@@ -348,19 +352,19 @@ renderExpr (ListComp _ ws1 comp ws2) =
 renderExpr (Call _ expr ws args ws2) =
   (case expr of
      Int _ n _ | n < 0 -> bracket $ renderExpr expr
-     BinOp{} -> bracket $ renderExpr expr
-     Tuple{} -> bracket $ renderExpr expr
-     Not{} -> bracket $ renderExpr expr
-     _ -> renderExpr expr) <>
+     BinOp{}   -> bracket $ renderExpr expr
+     Tuple{}   -> bracket $ renderExpr expr
+     Not{}     -> bracket $ renderExpr expr
+     _         -> renderExpr expr) <>
   bracket (foldMap renderWhitespace ws <> renderCommaSep renderArg args) <>
   foldMap renderWhitespace ws2
 renderExpr (Deref _ expr ws name) =
   (case expr of
-    Int{} -> bracket $ renderExpr expr
+    Int{}   -> bracket $ renderExpr expr
     BinOp{} -> bracket $ renderExpr expr
     Tuple{} -> bracket $ renderExpr expr
-    Not{} -> bracket $ renderExpr expr
-    _ -> renderExpr expr) <>
+    Not{}   -> bracket $ renderExpr expr
+    _       -> renderExpr expr) <>
   singleton (TkDot ()) <>
   foldMap renderWhitespace ws <>
   renderIdent name
@@ -591,13 +595,13 @@ renderArg (DoubleStarArg _ ws expr) =
   bracketTuple expr
 
 renderParam :: Param v a -> RenderOutput
-renderParam (PositionalParam _ name) =
-  renderIdent name
+renderParam (PositionalParam _ name t) =
+  renderIdent name <> maybe mempty (\t -> singleton (TkColon ()) <> renderIdent t) t
 renderParam (StarParam _ ws name) =
   TkStar () `cons` foldMap renderWhitespace ws <> renderIdent name
 renderParam (DoubleStarParam _ ws name) =
   TkDoubleStar () `cons` foldMap renderWhitespace ws <> renderIdent name
-renderParam (KeywordParam _ name ws2 expr) =
+renderParam (KeywordParam _ name ws2 _ expr) =
   renderIdent name <> singleton (TkEq ()) <>
   foldMap renderWhitespace ws2 <> bracketTuple expr
 

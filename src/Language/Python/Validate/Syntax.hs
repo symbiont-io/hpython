@@ -1,47 +1,53 @@
-{-# language DataKinds #-}
-{-# language GeneralizedNewtypeDeriving #-}
-{-# language FlexibleContexts #-}
-{-# language PolyKinds #-}
-{-# language TypeOperators #-}
-{-# language TypeSynonymInstances, FlexibleInstances #-}
-{-# language TemplateHaskell, TypeFamilies, MultiParamTypeClasses #-}
-{-# language RankNTypes #-}
-{-# language LambdaCase #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE TypeSynonymInstances       #-}
 module Language.Python.Validate.Syntax where
 
-import Control.Applicative ((<|>), liftA2)
-import Control.Lens.Cons (_Cons)
-import Control.Lens.Fold ((^..), (^?), folded, toListOf)
-import Control.Lens.Getter ((^.))
-import Control.Lens.Prism (_Right)
-import Control.Lens.Review ((#))
-import Control.Lens.TH (makeWrapped)
-import Control.Lens.Tuple (_2, _5)
-import Control.Lens.Traversal (traverseOf)
-import Control.Lens.Wrapped (_Wrapped)
-import Control.Monad (when)
-import Control.Monad.State (State, put, modify, get, evalState)
-import Control.Monad.Reader (ReaderT, local, ask, runReaderT)
-import Data.Char (isAscii)
-import Data.Coerce (coerce)
-import Data.Foldable (toList, traverse_)
-import Data.Bitraversable (bitraverse)
-import Data.Functor.Compose (Compose(..))
-import Data.List (intersect, union)
-import Data.Maybe (isJust)
-import Data.Semigroup (Semigroup(..))
-import Data.Type.Set (Nub, Member)
-import Data.Validate (Validate(..))
+import           Control.Applicative                   (liftA2, (<|>))
+import           Control.Lens.Cons                     (_Cons)
+import           Control.Lens.Fold                     (folded, toListOf, (^..),
+                                                        (^?))
+import           Control.Lens.Getter                   ((^.))
+import           Control.Lens.Prism                    (_Right)
+import           Control.Lens.Review                   (( # ))
+import           Control.Lens.TH                       (makeWrapped)
+import           Control.Lens.Traversal                (traverseOf)
+import           Control.Lens.Tuple                    (_2, _5)
+import           Control.Lens.Wrapped                  (_Wrapped)
+import           Control.Monad                         (when)
+import           Control.Monad.Reader                  (ReaderT, ask, local,
+                                                        runReaderT)
+import           Control.Monad.State                   (State, evalState, get,
+                                                        modify, put)
+import           Data.Bitraversable                    (bitraverse)
+import           Data.Char                             (isAscii)
+import           Data.Coerce                           (coerce)
+import           Data.Foldable                         (toList, traverse_)
+import           Data.Functor.Compose                  (Compose (..))
+import           Data.List                             (intersect, union)
+import           Data.Maybe                            (isJust)
+import           Data.Semigroup                        (Semigroup (..))
+import           Data.Type.Set                         (Member, Nub)
+import           Data.Validate                         (Validate (..))
 
-import qualified Data.List.NonEmpty as NonEmpty
+import qualified Data.List.NonEmpty                    as NonEmpty
 
-import Language.Python.Internal.Optics
-import Language.Python.Internal.Syntax
-import Language.Python.Validate.Indentation
-import Language.Python.Validate.Syntax.Error
+import           Language.Python.Internal.Optics
+import           Language.Python.Internal.Syntax
+import           Language.Python.Validate.Indentation
+import           Language.Python.Validate.Syntax.Error
 
 deleteBy' :: (a -> b -> Bool) -> a -> [b] -> [b]
-deleteBy' _ _ [] = []
+deleteBy' _ _ []      = []
 deleteBy' eq a (b:bs) = if a `eq` b then bs else b : deleteBy' eq a bs
 
 deleteFirstsBy' :: (a -> b -> Bool) -> [a] -> [b] -> [a]
@@ -51,9 +57,9 @@ data Syntax
 
 data SyntaxContext
   = SyntaxContext
-  { _inLoop :: Bool
+  { _inLoop     :: Bool
   , _inFunction :: Maybe [String]
-  , _inParens :: Bool
+  , _inParens   :: Bool
   }
 
 newtype ValidateSyntax e a
@@ -122,7 +128,7 @@ initialSyntaxContext =
 isIdentifier :: String -> Bool
 isIdentifier s =
   case s ^? _Cons of
-    Nothing -> False
+    Nothing      -> False
     Just (x, xs) -> isIdentifierStart x && all isIdentifierChar xs
 
 validateIdent
@@ -465,13 +471,13 @@ validateSmallStatementSyntax (Nonlocal a ws ids) =
   syntaxContext `bindValidateSyntax` \sctxt ->
   nonlocals `bindValidateSyntax` \nls ->
   (case deleteFirstsBy' (\a -> (==) (a ^. unvalidated.identValue)) (ids ^.. folded) nls of
-     [] -> pure ()
+     []  -> pure ()
      ids -> traverse_ (\e -> syntaxErrors [_NoBindingNonlocal # e]) ids) *>
   case _inFunction sctxt of
     Nothing -> syntaxErrors [_NonlocalOutsideFunction # a]
     Just params ->
       case intersect params (ids ^.. folded.unvalidated.identValue) of
-        [] -> Nonlocal a ws <$> traverse validateIdent ids
+        []  -> Nonlocal a ws <$> traverse validateIdent ids
         bad -> syntaxErrors [_ParametersNonlocal # (a, bad)]
 validateSmallStatementSyntax (Del a ws ids) =
   Del a ws <$> traverse validateIdent ids
@@ -574,7 +580,7 @@ validateParamsSyntax
 validateParamsSyntax e = coerce e <$ go [] False (toList e)
   where
     go _ _ [] = pure []
-    go names False (PositionalParam a name : params)
+    go names False (PositionalParam a name t : params)
       | _identValue name `elem` names =
           syntaxErrors [_DuplicateArgument # (a, _identValue name)] <*>
           validateIdent name <*>
@@ -582,7 +588,7 @@ validateParamsSyntax e = coerce e <$ go [] False (toList e)
       | otherwise =
           liftA2
             (:)
-            (PositionalParam a <$> validateIdent name)
+            (PositionalParam a <$> validateIdent name <*> (pure $ coerce t))
             (go (_identValue name:names) False params)
     go names seen (StarParam a ws name : params)
       | _identValue name `elem` names =
@@ -594,7 +600,7 @@ validateParamsSyntax e = coerce e <$ go [] False (toList e)
             (:)
             (StarParam a ws <$> validateIdent name)
             (go (_identValue name:names) seen params)
-    go names True (PositionalParam a name : params) =
+    go names True (PositionalParam a name t : params) =
       let
         name' = _identValue name
         errs =
@@ -602,7 +608,7 @@ validateParamsSyntax e = coerce e <$ go [] False (toList e)
             [_PositionalAfterKeywordParam # (a, name')]
       in
         syntaxErrors errs <*> go (name':names) True params
-    go names _ (KeywordParam a name ws2 expr : params)
+    go names _ (KeywordParam a name ws2 t expr : params)
       | _identValue name `elem` names =
           syntaxErrors [_DuplicateArgument # (a, _identValue name)] <*> go names True params
       | otherwise =
@@ -610,6 +616,7 @@ validateParamsSyntax e = coerce e <$ go [] False (toList e)
             (KeywordParam a <$>
              validateIdent name <*>
              pure ws2 <*>
+             pure (coerce t) <*>
              validateExprSyntax expr)
             (go (_identValue name:names) True params)
     go names _ [DoubleStarParam a ws name]
