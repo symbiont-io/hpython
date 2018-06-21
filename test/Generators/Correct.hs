@@ -201,7 +201,8 @@ genKeywordParam positionals =
   Gen.scale (max 0 . subtract 1) $
   KeywordParam () <$>
   Gen.filter (\i -> _identValue i `notElem` positionals) genIdent <*>
-  genWhitespaces <*> pure Nothing <*>
+  pure Nothing <*>
+  genWhitespaces <*> 
   genExpr
 
 genStarParam :: MonadGen m => [String] -> m (Param '[] ())

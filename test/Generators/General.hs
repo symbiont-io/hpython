@@ -29,7 +29,8 @@ genParam genExpr = Gen.sized $ \n ->
      then PositionalParam () <$> genIdent <*> pure Nothing
      else
        Gen.resize (n-1) $
-       KeywordParam () <$> genIdent <*> genWhitespaces <*> pure Nothing <*> genExpr) :
+       KeywordParam () <$> genIdent <*> pure Nothing -- FIXME
+                       <*> genWhitespaces <*> genExpr) :
     [ StarParam () <$> genWhitespaces <*> genIdent
     , DoubleStarParam () <$> genWhitespaces <*> genIdent
     ]

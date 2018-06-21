@@ -32,18 +32,28 @@ import Language.Python.Internal.Syntax.Whitespace
 class HasStatements s where
   _Statements :: Traversal (s v a) (s '[] a) (Statement v a) (Statement '[] a)
 
+data Type (v :: [*]) a 
+  = Type
+  {  _typeAnn :: a
+  ,  _typeName :: Ident v a 
+  ,  _typeParams :: Maybe (CommaSep1 (Type v a))
+  }
+  deriving (Eq, Show, Functor, Foldable, Traversable)
+
 data Param (v :: [*]) a
   = PositionalParam
   { _paramAnn :: a
   , _paramName :: Ident v a
-  , _patamType :: Maybe (Ident v a)
+    -- : spaces type
+  , _patamType :: Maybe ([Whitespace], Type v a)
   }
   | KeywordParam
   { _paramAnn :: a
   , _paramName :: Ident v a
+  -- : spaces type
+  , _patamType :: Maybe ([Whitespace], Type v a)
   -- = spaces
   , _unsafeKeywordParamWhitespaceRight :: [Whitespace]
-  , _patamType :: Maybe (Ident v a)
   , _unsafeKeywordParamExpr :: Expr v a
   }
   | StarParam
@@ -67,8 +77,8 @@ paramName :: Lens (Param v a) (Param '[] a) (Ident v a) (Ident v a)
 paramName = lens _paramName (\s a -> coerce $ s { _paramName = a})
 
 instance HasExprs Param where
-  _Exprs f (KeywordParam a name ws2 t expr) =
-    KeywordParam a (coerce name) <$> pure ws2 <*> (pure $ coerce t) <*> f expr
+  _Exprs f (KeywordParam a name t ws2 expr) =
+    KeywordParam a (coerce name) <$> (pure $ coerce t) <*> pure ws2 <*> f expr
   _Exprs _ p@PositionalParam{} = pure $ coerce p
   _Exprs _ p@StarParam{} = pure $ coerce p
   _Exprs _ p@DoubleStarParam{} = pure $ coerce p

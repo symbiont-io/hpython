@@ -21,7 +21,7 @@ class HasKeyword p where
   k_ :: Ident '[] () -> Expr '[] () -> p
 
 instance HasPositional (Param '[] ()) (Ident '[] ()) where; p_ = (\i -> PositionalParam () i Nothing)
-instance HasKeyword (Param '[] ()) where; k_ a e = KeywordParam () a [] Nothing e
+instance HasKeyword (Param '[] ()) where; k_ a e = KeywordParam () a Nothing [] e
 instance HasPositional (Arg '[] ()) (Expr '[] ()) where; p_ = PositionalArg ()
 instance HasKeyword (Arg '[] ()) where; k_ a = KeywordArg () a []
 

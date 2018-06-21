@@ -13,9 +13,9 @@ import           Language.Python.Validate.Syntax
 import           Language.Python.Validate.Syntax.Error
 
 import           Helpers                                    (doToPython)
---import           LexerParser
-import           Roundtrip
---import           Scope
+import           LexerParser
+-- import           Roundtrip
+import           Scope
 
 import qualified Generators.Correct                         as Correct
 import qualified Generators.General                         as General
@@ -26,7 +26,7 @@ import           Control.Monad.State
 import           Data.Functor
 import           Data.List
 import           Data.Validate
---import           System.Directory
+-- import           System.Directory
 import           System.Exit
 import           System.Process
 
@@ -68,6 +68,7 @@ validateModuleIndentation' = runValidateIndentation . validateModuleIndentation
 runPython3 :: (MonadTest m, MonadIO m) => FilePath -> Bool -> String -> m ()
 runPython3 path shouldSucceed str = do
   () <- liftIO $ writeFile path str
+  when shouldSucceed $ liftIO $ putStrLn str
   (ec, sto, ste) <- liftIO $ readProcessWithExitCode "python3" ["-m", "py_compile", path] ""
   annotateShow shouldSucceed
   annotateShow ec
@@ -184,16 +185,22 @@ statement_printparseprint_print =
             showStatement (res' ^. unvalidated) ===
               showStatement (py $> ())
 
+statement_parse_print :: String -> Property
+statement_parse_print str = do
+  property $ do
+    py <- doToPython statement str
+    showStatement (py $> ()) === str
+
 main = do
-  checkParallel roundtripTests
---  checkParallel lexerParserTests
---  let file = "hedgehog-test.py"
---  check . withTests 200 $ syntax_expr file
---  check . withTests 200 $ syntax_statement file
---  check . withTests 200 $ syntax_module file
---  check . withTests 200 $ correct_syntax_expr file
---  check . withTests 200 $ correct_syntax_statement file
---  check expr_printparseprint_print
---  check . withShrinks 2000 $ statement_printparseprint_print
---  checkParallel scopeTests
---  removeFile "hedgehog-test.py"
+  checkParallel lexerParserTests
+  let file = "hedgehog-test.py"
+  check . withTests 200 $ syntax_expr file
+  check . withTests 200 $ syntax_statement file
+  check . withTests 200 $ syntax_module file
+  check . withTests 200 $ correct_syntax_expr file
+  check . withTests 200 $ correct_syntax_statement file
+  check expr_printparseprint_print
+  check . withShrinks 2000 $ statement_printparseprint_print
+  checkParallel scopeTests
+
+  check $ statement_parse_print "def fun(a:int):\n    return 1"

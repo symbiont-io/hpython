@@ -608,15 +608,15 @@ validateParamsSyntax e = coerce e <$ go [] False (toList e)
             [_PositionalAfterKeywordParam # (a, name')]
       in
         syntaxErrors errs <*> go (name':names) True params
-    go names _ (KeywordParam a name ws2 t expr : params)
+    go names _ (KeywordParam a name t ws2 expr : params)
       | _identValue name `elem` names =
           syntaxErrors [_DuplicateArgument # (a, _identValue name)] <*> go names True params
       | otherwise =
           liftA2 (:)
             (KeywordParam a <$>
              validateIdent name <*>
-             pure ws2 <*>
              pure (coerce t) <*>
+             pure ws2 <*>
              validateExprSyntax expr)
             (go (_identValue name:names) True params)
     go names _ [DoubleStarParam a ws name]

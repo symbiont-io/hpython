@@ -618,14 +618,24 @@ commaSep1' ws pa =
     from a [] b            = CommaSepOne1' a b
     from a ((b, c) : bs) d = CommaSepMany1' a b $ from c bs d
 
+
+typeAnnotation :: Parser ann (Type '[] ann)
+typeAnnotation =
+  do
+    a <- identifier anySpace
+    b <- optional ((,,) <$> (token anySpace (TkLeftBracket ())) <*> commaSep1 anySpace typeAnnotation <*> (token anySpace (TkRightBracket ())))
+    pure $ Type (_identAnnotation a) a ((\(_,a,_) -> a) <$> b)
+
+
 param :: Parser ann (Param '[] ann)
 param =
   do
     a <- identifier anySpace
+    mtype <- optional ((,) <$> (snd <$> token anySpace (TkColon ())) <*> typeAnnotation)
     op <- optional ((,) <$> (snd <$> token anySpace (TkEq ())) <*> expr anySpace)
     case op of
-      Nothing     -> pure $ PositionalParam (_identAnnotation a ) a Nothing
-      Just (w, e) -> pure $ KeywordParam (_identAnnotation a) a w Nothing e
+      Nothing     -> pure $ PositionalParam (_identAnnotation a ) a mtype
+      Just (w, e) -> pure $ KeywordParam (_identAnnotation a) a mtype w e
 --  (\a ->
 --     maybe
 --       (PositionalParam (_identAnnotation a) a)

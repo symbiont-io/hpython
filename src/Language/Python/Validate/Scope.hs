@@ -325,8 +325,8 @@ validateParamScope
   -> ValidateScope a e (Param (Nub (Scope ': v)) a)
 validateParamScope (PositionalParam a ident t) =
   pure $ PositionalParam a (coerce ident) Nothing
-validateParamScope (KeywordParam a ident ws2 t expr) =
-  KeywordParam a (coerce ident) ws2 (coerce t) <$> validateExprScope expr
+validateParamScope (KeywordParam a ident t ws2 expr) =
+  KeywordParam a (coerce ident) (coerce t) ws2 <$> validateExprScope expr
 validateParamScope a@StarParam{} = pure $ coerce a
 validateParamScope a@DoubleStarParam{} = pure $ coerce a
 

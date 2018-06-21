@@ -594,16 +594,22 @@ renderArg (DoubleStarArg _ ws expr) =
   foldMap renderWhitespace ws <>
   bracketTuple expr
 
+renderType :: Type v a -> RenderOutput
+renderType (Type _ name Nothing) =
+  renderIdent name
+renderType (Type _ name (Just cs1)) =
+  renderIdent name <> singleton (TkLeftBracket ()) <> renderCommaSep1 renderType cs1 <> singleton (TkRightBracket ())
+
 renderParam :: Param v a -> RenderOutput
 renderParam (PositionalParam _ name t) =
-  renderIdent name <> maybe mempty (\t -> singleton (TkColon ()) <> renderIdent t) t
+  renderIdent name <> maybe mempty (\t1 -> singleton (TkColon ()) <> (renderType t1)) (snd <$> t)
 renderParam (StarParam _ ws name) =
   TkStar () `cons` foldMap renderWhitespace ws <> renderIdent name
 renderParam (DoubleStarParam _ ws name) =
   TkDoubleStar () `cons` foldMap renderWhitespace ws <> renderIdent name
-renderParam (KeywordParam _ name ws2 _ expr) =
-  renderIdent name <> singleton (TkEq ()) <>
-  foldMap renderWhitespace ws2 <> bracketTuple expr
+renderParam (KeywordParam _ name t ws2 expr) =
+  renderIdent name <> (maybe mempty (\t1 -> singleton (TkColon ()) <> renderType t1) (snd <$> t)) <>
+  singleton (TkEq ()) <> foldMap renderWhitespace ws2 <> bracketTuple expr
 
 renderBinOp :: BinOp a -> RenderOutput
 renderBinOp (Is _ ws) = TkIs () `cons` foldMap renderWhitespace ws
