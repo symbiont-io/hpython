@@ -75,6 +75,17 @@ executable example
                        -Wunused-imports
                        -Werror
 
+executable roundtrip
+  main-is:             Roundtrip.hs
+  hs-source-dirs:      example
+  build-depends:       base >=4.9 && <4.11, lens, hpython, filepath, trifecta
+  default-language:    Haskell2010
+  ghc-options:         -O2
+                       -Wincomplete-patterns
+                       -Wincomplete-record-updates
+                       -Wunused-imports
+                       -Werror
+
 test-suite hpython-tests
   main-is:             Main.hs
   type:                exitcode-stdio-1.0
