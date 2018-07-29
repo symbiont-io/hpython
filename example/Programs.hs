@@ -26,9 +26,8 @@ append_to =
       CommaSepOne (KeywordParam () "to" [] Nothing (List () [] Nothing []))
     )
     []
-    []
-    LF
-    (Block
+    (Suite () [] Nothing LF $
+     Block
      [ Right $
        SmallStatements
          (Indents [replicate 4 Space ^. from indentWhitespaces] ())
@@ -36,7 +35,7 @@ append_to =
           Call ()
             (Deref () (Ident () "to") [] "append")
             []
-            (CommaSepOne $ PositionalArg () (Ident () "element"))
+            (Just $ CommaSepOne1' (PositionalArg () (Ident () "element")) Nothing)
             [])
          []
          Nothing
@@ -44,7 +43,7 @@ append_to =
      , Right $
        SmallStatements
          (Indents [replicate 4 Space ^. from indentWhitespaces] ())
-         (Return () [Space] (Ident () "to"))
+         (Return () [Space] (Just $ Ident () "to"))
          []
          Nothing
          (Just LF)

@@ -14,6 +14,9 @@ import Language.Python.Internal.Syntax.Whitespace
 
 data BinOp a
   = Is a [Whitespace]
+  | IsNot a [Whitespace] [Whitespace]
+  | In a [Whitespace]
+  | NotIn a [Whitespace] [Whitespace]
   | Minus a [Whitespace]
   | Exp a [Whitespace]
   | BoolAnd a [Whitespace]
@@ -28,6 +31,11 @@ data BinOp a
   | Divide a [Whitespace]
   | Percent a [Whitespace]
   | Plus a [Whitespace]
+  | BitOr a [Whitespace]
+  | BitXor a [Whitespace]
+  | BitAnd a [Whitespace]
+  | ShiftLeft a [Whitespace]
+  | ShiftRight a [Whitespace]
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 instance HasTrailingWhitespace (BinOp a) where
@@ -35,6 +43,9 @@ instance HasTrailingWhitespace (BinOp a) where
     lens
       (\case
          Is _ a -> a
+         IsNot _ _ a -> a
+         In _ a -> a
+         NotIn _ _ a -> a
          Minus _ a -> a
          Exp _ a -> a
          BoolAnd _ a -> a
@@ -48,10 +59,18 @@ instance HasTrailingWhitespace (BinOp a) where
          Gt _ a -> a
          GtEquals _ a -> a
          NotEquals _ a -> a
+         BitOr _ a -> a
+         BitXor _ a -> a
+         BitAnd _ a -> a
+         ShiftLeft _ a -> a
+         ShiftRight _ a -> a
          Percent _ a -> a)
       (\op ws ->
          case op of
            Is a _ -> Is a ws
+           IsNot a b _ -> IsNot a b ws
+           In a _ -> In a ws
+           NotIn a b _ -> NotIn a b ws
            Minus a _ -> Minus a ws
            Exp a _ -> Exp a ws
            BoolAnd a _ -> BoolAnd a ws
@@ -65,6 +84,11 @@ instance HasTrailingWhitespace (BinOp a) where
            Gt a _ -> Gt a ws
            GtEquals a _ -> GtEquals a ws
            NotEquals a _ -> NotEquals a ws
+           BitOr a _ -> BitOr a ws
+           BitAnd a _ -> BitAnd a ws
+           BitXor a _ -> BitXor a ws
+           ShiftLeft a _ -> ShiftLeft a ws
+           ShiftRight a _ -> ShiftRight a ws
            Percent a _ -> Equals a ws)
 
 data Assoc = L | R deriving (Eq, Show)
@@ -82,12 +106,20 @@ operatorTable =
   [ entry BoolOr 4 L
   , entry BoolAnd 5 L
   , entry Is 10 L
+  , entry1 IsNot 10 L
+  , entry In 10 L
+  , entry1 NotIn 10 L
   , entry Equals 10 L
   , entry Lt 10 L
   , entry LtEquals 10 L
   , entry Gt 10 L
   , entry GtEquals 10 L
   , entry NotEquals 10 L
+  , entry BitOr 14 L
+  , entry BitXor 15 L
+  , entry BitAnd 16 L
+  , entry ShiftLeft 17 L
+  , entry ShiftRight 17 L
   , entry Minus 20 L
   , entry Plus 20 L
   , entry Multiply 25 L
@@ -97,6 +129,7 @@ operatorTable =
   ]
   where
     entry a = OpEntry (a () [])
+    entry1 a = OpEntry (a () [] [])
 
 sameOperator :: BinOp a -> BinOp a' -> Bool
 sameOperator op op' =
@@ -104,6 +137,9 @@ sameOperator op op' =
     (BoolOr{}, BoolOr{}) -> True
     (BoolAnd{}, BoolAnd{}) -> True
     (Is{}, Is{}) -> True
+    (IsNot{}, IsNot{}) -> True
+    (In{}, In{}) -> True
+    (NotIn{}, NotIn{}) -> True
     (Equals{}, Equals{}) -> True
     (Lt{}, Lt{}) -> True
     (LtEquals{}, LtEquals{}) -> True
@@ -116,6 +152,11 @@ sameOperator op op' =
     (Divide{}, Divide{}) -> True
     (Exp{}, Exp{}) -> True
     (Percent{}, Percent{}) -> True
+    (BitOr{}, BitOr{}) -> True
+    (BitXor{}, BitXor{}) -> True
+    (BitAnd{}, BitAnd{}) -> True
+    (ShiftLeft{}, ShiftLeft{}) -> True
+    (ShiftRight{}, ShiftRight{}) -> True
     _ -> False
 
 lookupOpEntry :: BinOp a -> [OpEntry] -> OpEntry

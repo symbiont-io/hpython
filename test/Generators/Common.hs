@@ -5,6 +5,7 @@ import Hedgehog
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
+import Data.Digit.HeXaDeCiMaL
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.List.NonEmpty as NonEmpty
 
@@ -16,20 +17,31 @@ whitespaceSize Tab = 1
 whitespaceSize (Continued _ ws) = 1 + sum (fmap whitespaceSize ws)
 whitespaceSize (Newline _) = 1
 
+genSuite :: MonadGen m => m (Block '[] ()) -> m (Suite '[] ())
+genSuite gb =
+  Suite () <$>
+  genWhitespaces <*>
+  Gen.maybe genComment <*>
+  genNewline <*>
+  gb
+
 genSmallInt :: MonadGen m => m (Expr '[] ())
 genSmallInt =
   Int () <$>
   Gen.integral (Range.constant 0 100) <*>
   genWhitespaces
 
-genString :: MonadGen m => m String
-genString = Gen.list (Range.constant 0 50) (Gen.filter (/='\0') Gen.latin1)
+genString :: MonadGen m => m PyChar -> m [PyChar]
+genString = Gen.list (Range.constant 0 50)
 
 genNewline :: MonadGen m => m Newline
 genNewline = Gen.element [LF, CR, CRLF]
 
 genStringType :: MonadGen m => m StringType
-genStringType = Gen.element [ShortSingle, ShortDouble, LongSingle, LongDouble]
+genStringType = Gen.element [ShortString, LongString]
+
+genQuoteType :: MonadGen m => m QuoteType
+genQuoteType = Gen.element [SingleQuote, DoubleQuote]
 
 genAnyWhitespace :: MonadGen m => m Whitespace
 genAnyWhitespace = Gen.sized $ \n ->
@@ -74,7 +86,12 @@ genStringPrefix =
     , Prefix_R
     , Prefix_u
     , Prefix_U
-    , Prefix_b
+    ]
+
+genBytesPrefix :: MonadGen m => m BytesPrefix
+genBytesPrefix =
+  Gen.element
+    [ Prefix_b
     , Prefix_B
     , Prefix_br
     , Prefix_Br
@@ -111,7 +128,7 @@ genWhitespaces = do
       Gen.choice
       [ (Space :) <$> go (n-1)
       , (Tab :) <$> go (n-1)
-      , fmap pure $ Continued <$> genNewline <*> go (n-1)
+      , Gen.shrink (\_ -> [[Space]]) . fmap pure $ Continued <$> genNewline <*> go (n-1)
       ]
 
 genAnyWhitespaces :: MonadGen m => m [Whitespace]
@@ -124,7 +141,7 @@ genAnyWhitespaces = do
       Gen.choice
       [ (Space :) <$> go (n-1)
       , (Tab :) <$> go (n-1)
-      , fmap pure $ Continued <$> genNewline <*> go (n-1)
+      , Gen.shrink (\_ -> [[Space]]) . fmap pure $ Continued <$> genNewline <*> go (n-1)
       , (:) <$> (Newline <$> genNewline) <*> go (n-1)
       ]
 
@@ -235,3 +252,75 @@ genSizedCommaSep1' ma = Gen.sized $ \n ->
             (Gen.resize (n - n') $ genSizedCommaSep1' ma)
             (\b -> CommaSepMany1' a <$> genWhitespaces <*> pure b)
       ]
+
+genAugAssign :: MonadGen m => m (AugAssign ())
+genAugAssign =
+  Gen.element
+    [ PlusEq
+    , MinusEq
+    , StarEq
+    , AtEq
+    , SlashEq
+    , PercentEq
+    , AmpersandEq
+    , PipeEq
+    , CaretEq
+    , ShiftLeftEq
+    , ShiftRightEq
+    , DoubleStarEq
+    , DoubleSlashEq
+    ] <*>
+  pure () <*>
+  genWhitespaces
+
+genStringLiteral :: MonadGen m => m PyChar -> m (StringLiteral ())
+genStringLiteral gChar =
+  StringLiteral () <$>
+  Gen.maybe genStringPrefix <*>
+  genQuoteType <*>
+  genStringType <*>
+  genString gChar <*>
+  genWhitespaces
+
+genBytesLiteral :: MonadGen m => m PyChar -> m (StringLiteral ())
+genBytesLiteral gChar =
+  BytesLiteral () <$>
+  genBytesPrefix <*>
+  genQuoteType <*>
+  genStringType <*>
+  genString gChar <*>
+  genWhitespaces
+
+genDictItem :: MonadGen m => m (Expr v ()) -> m (DictItem v ())
+genDictItem ge =
+  DictItem () <$>
+  ge <*>
+  genAnyWhitespaces <*>
+  ge
+
+genHexDigit :: MonadGen m => m HeXDigit
+genHexDigit =
+  Gen.element
+  [ HeXDigit0
+  , HeXDigit1
+  , HeXDigit2
+  , HeXDigit3
+  , HeXDigit4
+  , HeXDigit5
+  , HeXDigit6
+  , HeXDigit7
+  , HeXDigit8
+  , HeXDigit9
+  , HeXDigita
+  , HeXDigitA
+  , HeXDigitb
+  , HeXDigitB
+  , HeXDigitc
+  , HeXDigitC
+  , HeXDigitd
+  , HeXDigitD
+  , HeXDigite
+  , HeXDigitE
+  , HeXDigitf
+  , HeXDigitF
+  ]
