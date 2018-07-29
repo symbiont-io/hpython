@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
+
 module Programs where
 
 import           Control.Lens.Getter             ((^.))
@@ -18,37 +19,39 @@ import           Language.Python.Syntax
 -- Written without the DSL
 append_to =
   CompoundStatement $
-  Fundef (Indents [] ()) ()
+  Fundef
+    (Indents [] ())
+    ()
     [Space]
     "append_to"
     []
-    ( CommaSepMany (PositionalParam () "element" Nothing) [Space] $
-      CommaSepOne (KeywordParam () "to" Nothing [] (List () [] Nothing []))
-    )
+    (CommaSepMany (PositionalParam () "element" Nothing) [Space] $
+     CommaSepOne (KeywordParam () "to" Nothing [] (List () [] Nothing [])))
     []
-    []
-    LF
-    (Block
-     [ Right $
-       SmallStatements
-         (Indents [replicate 4 Space ^. from indentWhitespaces] ())
-         (Expr () $
-          Call ()
-            (Deref () (Ident () "to") [] "append")
-            []
-            (CommaSepOne $ PositionalArg () (Ident () "element"))
-            [])
-         []
-         Nothing
-         (Just LF)
-     , Right $
-       SmallStatements
-         (Indents [replicate 4 Space ^. from indentWhitespaces] ())
-         (Return () [Space] (Ident () "to"))
-         []
-         Nothing
-         (Just LF)
-     ])
+    (Suite () [] Nothing LF $
+     Block
+       [ Right $
+         SmallStatements
+           (Indents [replicate 4 Space ^. from indentWhitespaces] ())
+           (Expr () $
+            Call
+              ()
+              (Deref () (Ident () "to") [] "append")
+              []
+              (Just $
+               CommaSepOne1' (PositionalArg () (Ident () "element")) Nothing)
+              [])
+           []
+           Nothing
+           (Just LF)
+       , Right $
+         SmallStatements
+           (Indents [replicate 4 Space ^. from indentWhitespaces] ())
+           (Return () [Space] (Just $ Ident () "to"))
+           []
+           Nothing
+           (Just LF)
+       ])
 
 -- |
 -- @
@@ -59,10 +62,10 @@ append_to =
 --
 -- Written with the DSL
 append_to' =
-  def_ "append_to" [ p_ "element", k_ "to" (list_ []) ]
-    [ expr_ $ call_ ("to" /> "append") [ "element" ]
-    , return_ "to"
-    ]
+  def_
+    "append_to"
+    [p_ "element", k_ "to" (list_ [])]
+    [expr_ $ call_ ("to" /> "append") ["element"], return_ "to"]
 
 -- |
 -- @
@@ -75,14 +78,19 @@ append_to' =
 --   return go(n, 1)
 -- @
 fact_tr =
-  def_ "fact" [p_ "n"]
-  [ def_ "go" [p_ "n", p_ "acc"]
-    [ ifElse_ ("n" .== 0)
-      [return_ "acc"]
-      [return_ $ call_ "go" [p_ $ "n" .- 1, p_ $ "n" .* "acc"]]
+  def_
+    "fact"
+    [p_ "n"]
+    [ def_
+        "go"
+        [p_ "n", p_ "acc"]
+        [ ifElse_
+            ("n" .== 0)
+            [return_ "acc"]
+            [return_ $ call_ "go" [p_ $ "n" .- 1, p_ $ "n" .* "acc"]]
+        ]
+    , return_ $ call_ "go" [p_ "n", p_ 1]
     ]
-  , return_ $ call_ "go" [p_ "n", p_ 1]
-  ]
 
 -- |
 -- @
@@ -98,10 +106,10 @@ spin = def_ "spin" [] [expr_ $ call_ "spin" []]
 --   yes()
 -- @
 yes =
-  def_ "yes" []
-  [ expr_ $ call_ "print" [p_ $ str_ "yes"]
-  , expr_ $ call_ "yes" []
-  ]
+  def_
+    "yes"
+    []
+    [expr_ $ call_ "print" [p_ $ str_ "yes"], expr_ $ call_ "yes" []]
 
 everything =
   Module
