@@ -34,6 +34,7 @@ def_ name params block =
     []
     (listToCommaSep params)
     []
+    Nothing
     (Suite () [] Nothing LF $ toBlock block)
 
 call_ :: Expr '[] () -> [Arg '[] ()] -> Expr '[] ()

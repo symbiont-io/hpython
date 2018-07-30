@@ -213,6 +213,7 @@ showToken t =
     TkShiftRightEq{} -> ">>="
     TkDoubleStarEq{} -> "**="
     TkDoubleSlashEq{} -> "//="
+    TkArrow{} -> "->"
 
 bracket :: RenderOutput -> RenderOutput
 bracket a = TkLeftParen () `cons` a <> singleton (TkRightParen ())
@@ -737,11 +738,15 @@ renderSuite (Suite _ a b c d) =
   renderBlock d
 
 renderCompoundStatement :: CompoundStatement v a -> RenderOutput
-renderCompoundStatement (Fundef idnt _ ws1 name ws2 params ws3 s) =
+renderCompoundStatement (Fundef idnt _ ws1 name ws2 params ws3 t s) =
   renderIndents idnt <>
   singleton (TkDef ()) <> foldMap renderWhitespace ws1 <> renderIdent name <>
   bracket (foldMap renderWhitespace ws2 <> renderCommaSep renderParam params) <>
-  foldMap renderWhitespace ws3 <> renderSuite s
+  foldMap renderWhitespace ws3 <> renderTypeAnn t <> renderSuite s
+  where 
+    renderTypeAnn Nothing = mempty
+    renderTypeAnn (Just (ws, t)) = singleton (TkArrow ()) <> foldMap renderWhitespace ws <> renderType t
+
 renderCompoundStatement (If idnt _ ws1 expr s elifs body') =
   renderIndents idnt <>
   singleton (TkIf ()) <> foldMap renderWhitespace ws1 <>

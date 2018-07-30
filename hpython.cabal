@@ -85,6 +85,7 @@ executable roundtrip
                        -Wincomplete-record-updates
                        -Wunused-imports
                        -Werror
+                       -threaded
 
 test-suite hpython-tests
   main-is:             Main.hs

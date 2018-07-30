@@ -865,6 +865,7 @@ compoundStatement =
       fmap snd (token anySpace $ TkLeftParen ()) <*>
       commaSep anySpace param <*>
       fmap snd (token space $ TkRightParen ()) <*>
+      maybeTypeAnn <*>
       suite
 
     ifSt =
@@ -957,6 +958,10 @@ compoundStatement =
          indents <*>
          (snd <$> token space (TkElse ())) <*>
          suite)
+
+    maybeTypeAnn = optional ((,) <$> 
+        (snd <$> token space (TkArrow())) <*>
+        typeAnnotation)
 
 module_ :: Parser ann (Module '[] ann)
 module_ =

@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds        #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeOperators    #-}
+
 module Main where
 
 import           Language.Python.Internal.Optics
@@ -14,6 +15,7 @@ import           Language.Python.Validate.Syntax.Error
 
 import           Helpers                                    (doToPython)
 import           LexerParser
+
 -- import           Roundtrip
 import           Scope
 
@@ -26,6 +28,7 @@ import           Control.Monad.State
 import           Data.Functor
 import           Data.List
 import           Data.Validate
+
 -- import           System.Directory
 import           System.Exit
 import           System.Process
@@ -33,54 +36,56 @@ import           System.Process
 import           Hedgehog
 import qualified Hedgehog.Gen                               as Gen
 
-validateExprSyntax'
-  :: Expr '[Indentation] a
-  -> Validate [SyntaxError '[Indentation] a] (Expr '[Syntax, Indentation] a)
-validateExprSyntax' = runValidateSyntax initialSyntaxContext [] . validateExprSyntax
+validateExprSyntax' ::
+     Expr '[ Indentation] a
+  -> Validate [SyntaxError '[ Indentation] a] (Expr '[ Syntax, Indentation] a)
+validateExprSyntax' =
+  runValidateSyntax initialSyntaxContext [] . validateExprSyntax
 
-validateExprIndentation'
-  :: Expr '[] a
-  -> Validate [IndentationError '[] a] (Expr '[Indentation] a)
+validateExprIndentation' ::
+     Expr '[] a -> Validate [IndentationError '[] a] (Expr '[ Indentation] a)
 validateExprIndentation' = runValidateIndentation . validateExprIndentation
 
-validateStatementSyntax'
-  :: Statement '[Indentation] a
-  -> Validate [SyntaxError '[Indentation] a] (Statement '[Syntax, Indentation] a)
+validateStatementSyntax' ::
+     Statement '[ Indentation] a
+  -> Validate [SyntaxError '[ Indentation] a] (Statement '[ Syntax, Indentation] a)
 validateStatementSyntax' =
   runValidateSyntax initialSyntaxContext [] . validateStatementSyntax
 
-validateStatementIndentation'
-  :: Statement '[] a
-  -> Validate [IndentationError '[] a] (Statement '[Indentation] a)
-validateStatementIndentation' = runValidateIndentation . validateStatementIndentation
+validateStatementIndentation' ::
+     Statement '[] a
+  -> Validate [IndentationError '[] a] (Statement '[ Indentation] a)
+validateStatementIndentation' =
+  runValidateIndentation . validateStatementIndentation
 
-validateModuleSyntax'
-  :: Module '[Indentation] a
-  -> Validate [SyntaxError '[Indentation] a] (Module '[Syntax, Indentation] a)
+validateModuleSyntax' ::
+     Module '[ Indentation] a
+  -> Validate [SyntaxError '[ Indentation] a] (Module '[ Syntax, Indentation] a)
 validateModuleSyntax' =
   runValidateSyntax initialSyntaxContext [] . validateModuleSyntax
 
-validateModuleIndentation'
-  :: Module '[] a
-  -> Validate [IndentationError '[] a] (Module '[Indentation] a)
+validateModuleIndentation' ::
+     Module '[] a
+  -> Validate [IndentationError '[] a] (Module '[ Indentation] a)
 validateModuleIndentation' = runValidateIndentation . validateModuleIndentation
 
 runPython3 :: (MonadTest m, MonadIO m) => FilePath -> Bool -> String -> m ()
 runPython3 path shouldSucceed str = do
   () <- liftIO $ writeFile path str
   when shouldSucceed $ liftIO $ putStrLn str
-  (ec, sto, ste) <- liftIO $ readProcessWithExitCode "python3" ["-m", "py_compile", path] ""
+  (ec, sto, ste) <-
+    liftIO $ readProcessWithExitCode "python3" ["-m", "py_compile", path] ""
   annotateShow shouldSucceed
   annotateShow ec
   annotate sto
   annotate ste
   case (shouldSucceed, ec) of
     (True, ExitSuccess) -> success
-    (True, ExitFailure{})
+    (True, ExitFailure {})
       | "SyntaxError" `isInfixOf` last (lines ste) -> failure
       | otherwise -> success
     (False, ExitSuccess) -> failure
-    (False, ExitFailure{}) -> success
+    (False, ExitFailure {}) -> success
 
 syntax_expr :: FilePath -> Property
 syntax_expr path =
@@ -96,10 +101,7 @@ syntax_expr path =
             Failure errs'' -> annotateShow errs'' $> False
             Success res'   -> pure True
     annotate rex
-    runPython3
-      path
-      shouldSucceed
-      rex
+    runPython3 path shouldSucceed rex
 
 syntax_statement :: FilePath -> Property
 syntax_statement path =
@@ -183,8 +185,7 @@ statement_printparseprint_print =
           Success res' -> do
             py <- doToPython statement $ showStatement res'
             annotateShow py
-            showStatement (res' ^. unvalidated) ===
-              showStatement (py $> ())
+            showStatement (res' ^. unvalidated) === showStatement (py $> ())
 
 statement_parse_print :: String -> Property
 statement_parse_print str = do
@@ -193,6 +194,8 @@ statement_parse_print str = do
     showStatement (py $> ()) === str
 
 main = do
+  check $ statement_parse_print "def fun(a:int):\n    return 1"
+  check $ statement_parse_print "def fun(a:str) ->  int:\n    return 1"
   checkParallel lexerParserTests
   let file = "hedgehog-test.py"
   check . withTests 200 $ syntax_expr file
@@ -203,5 +206,3 @@ main = do
   check expr_printparseprint_print
   check . withShrinks 2000 $ statement_printparseprint_print
   checkParallel scopeTests
-
-  check $ statement_parse_print "def fun(a:int):\n    return 1"

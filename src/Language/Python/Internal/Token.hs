@@ -92,6 +92,7 @@ data PyToken a
   | TkPipe a
   | TkCaret a
   | TkAmpersand a
+  | TkArrow a
   deriving (Eq, Show, Functor)
 deriveEq1 ''PyToken
 
@@ -181,3 +182,4 @@ pyTokenAnn tk =
     TkShiftRightEq a -> a
     TkDoubleStarEq a -> a
     TkDoubleSlashEq a -> a
+    TkArrow a -> a

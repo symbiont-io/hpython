@@ -246,7 +246,7 @@ genCompoundStatement =
            Fundef <$> genIndents <*> pure () <*> genWhitespaces1 <*> genIdent <*>
            genWhitespaces <*>
            pure a <*>
-           genWhitespaces <*>
+           genWhitespaces <*> pure Nothing <*>
            pure b)
         (genSizedCommaSep $ genParam genExpr)
         (genSuite genBlock)

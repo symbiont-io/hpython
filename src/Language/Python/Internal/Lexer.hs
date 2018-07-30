@@ -191,7 +191,7 @@ parseToken =
     , char '&' *> (TkAmpersandEq <$ char '=' <|> pure TkAmpersand)
     , TkAtEq <$ string "@="
     , char '+' *> (TkPlusEq <$ char '=' <|> pure TkPlus)
-    , char '-' *> (TkMinusEq <$ char '=' <|> pure TkMinus)
+    , char '-' *> (TkMinusEq <$ char '=' <|> TkArrow <$ char '>' <|> pure TkMinus)
     , char '%' *> (TkPercentEq <$ char '=' <|> pure TkPercent)
     , TkContinued <$ char '\\' <*> parseNewline
     , TkColon <$ char ':'

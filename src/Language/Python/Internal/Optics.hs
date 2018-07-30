@@ -67,6 +67,7 @@ _Fundef ::
                                              , [Whitespace]
                                              , CommaSep (Param v a)
                                              , [Whitespace]
+                                             , (Maybe ([Whitespace] ,Type v a))
                                              , Suite v a) ( Indents a
                                                           , a
                                                           , NonEmpty Whitespace
@@ -74,14 +75,15 @@ _Fundef ::
                                                           , [Whitespace]
                                                           , CommaSep (Param '[] a)
                                                           , [Whitespace]
+                                                          , (Maybe ([Whitespace],Type '[] a))
                                                           , Suite '[] a)
 _Fundef =
   prism
-    (\(idnt, a, b, c, d, e, f, g) ->
-       CompoundStatement (Fundef idnt a b c d e f g))
+    (\(idnt, a, b, c, d, e, f, t, g) ->
+       CompoundStatement (Fundef idnt a b c d e f t g))
     (\case
-       (coerce -> CompoundStatement (Fundef idnt a b c d e f g)) ->
-         Right (idnt, a, b, c, d, e, f, g)
+       (coerce -> CompoundStatement (Fundef idnt a b c d e f t g)) ->
+         Right (idnt, a, b, c, d, e, f, t, g)
        (coerce -> a) -> Left a)
 
 _Call ::
@@ -132,8 +134,8 @@ instance HasIndents Suite where
 instance HasIndents CompoundStatement where
   _Indents fun s =
     case s of
-      Fundef idnt a b c d e f g ->
-        (\idnt' -> Fundef idnt' a b c d e f) <$> fun idnt <*> _Indents fun g
+      Fundef idnt a b c d e f t g ->
+        (\idnt' -> Fundef idnt' a b c d e f t) <$> fun idnt <*> _Indents fun g
       If idnt a b c d elifs e ->
         (\idnt' -> If idnt' a b c) <$> fun idnt <*> _Indents fun d <*>
         traverse
@@ -186,8 +188,8 @@ instance HasNewlines Suite where
 instance HasNewlines CompoundStatement where
   _Newlines fun s =
     case s of
-      Fundef idnt ann ws1 name ws2 params ws3 s ->
-        Fundef idnt ann ws1 name ws2 params ws3 <$> _Newlines fun s
+      Fundef idnt ann ws1 name ws2 params ws3 t s ->
+        Fundef idnt ann ws1 name ws2 params ws3 t <$> _Newlines fun s
       If idnt ann ws1 cond s elifs els ->
         If idnt ann ws1 cond <$> _Newlines fun s <*>
         traverseOf (traverse . _4 . _Newlines) fun elifs <*>

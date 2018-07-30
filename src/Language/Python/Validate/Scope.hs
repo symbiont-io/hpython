@@ -155,12 +155,12 @@ validateCompoundStatementScope
   :: AsScopeError e v a
   => CompoundStatement v a
   -> ValidateScope a e (CompoundStatement (Nub (Scope ': v)) a)
-validateCompoundStatementScope (Fundef idnts a ws1 name ws2 params ws3 s) =
+validateCompoundStatementScope (Fundef idnts a ws1 name ws2 params ws3 t s) =
   (locallyOver scLocalScope (const Trie.empty) $
    locallyOver scImmediateScope (const Trie.empty) $
      Fundef idnts a ws1 (coerce name) ws2 <$>
      traverse validateParamScope params <*>
-     pure ws3 <*>
+     pure ws3 <*> pure (coerce t) <*>
      locallyExtendOver
        scGlobalScope
        ((_identAnnotation &&& _identValue) name :

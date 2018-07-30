@@ -445,7 +445,7 @@ genCompoundStatement =
       Fundef <$>
         use currentIndentation <*> pure () <*>
         genWhitespaces1 <*> genIdent <*> genWhitespaces <*> pure a <*>
-        genWhitespaces <*> pure b
+        genWhitespaces <*> pure Nothing <*> pure b
     , sized4M
         (\a b c d -> 
            If <$>

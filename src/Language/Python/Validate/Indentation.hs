@@ -166,8 +166,8 @@ validateCompoundStatementIndentation
   :: AsIndentationError e v a
   => CompoundStatement v a
   -> ValidateIndentation e (CompoundStatement (Nub (Indentation ': v)) a)
-validateCompoundStatementIndentation (Fundef idnt a ws1 name ws2 params ws3 s) =
-  (\idnt' params' -> Fundef idnt' a ws1 (coerce name) ws2 params' ws3) <$>
+validateCompoundStatementIndentation (Fundef idnt a ws1 name ws2 params ws3 t s) =
+  (\idnt' params' -> Fundef idnt' a ws1 (coerce name) ws2 params' ws3 (coerce t)) <$>
   checkIndent idnt <*>
   validateParamsIndentation params <*>
   validateSuiteIndentation idnt s
