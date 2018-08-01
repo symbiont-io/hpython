@@ -162,12 +162,21 @@ validateExceptAsIndentation (ExceptAs ann e f) =
   validateExprIndentation e <*>
   pure (over (traverse._2) coerce f)
 
+validateDecoratorIndentation 
+  :: AsIndentationError e v a
+  => Maybe (Decorator v a) 
+  -> ValidateIndentation e (Maybe (Decorator (Nub (Indentation ': v)) a))
+validateDecoratorIndentation (Just (Decorator idts ident nl)) = 
+  Just <$> (Decorator <$> checkIndent idts <*> pure (coerce ident) <*> pure nl)
+validateDecoratorIndentation Nothing = pure Nothing 
+
 validateCompoundStatementIndentation
   :: AsIndentationError e v a
   => CompoundStatement v a
   -> ValidateIndentation e (CompoundStatement (Nub (Indentation ': v)) a)
-validateCompoundStatementIndentation (Fundef idnt a ws1 name ws2 params ws3 t s) =
-  (\idnt' params' -> Fundef idnt' a ws1 (coerce name) ws2 params' ws3 (coerce t)) <$>
+validateCompoundStatementIndentation (Fundef dec idnt a ws1 name ws2 params ws3 t s) =
+  (\dec' idnt' params' -> Fundef dec' idnt' a ws1 (coerce name) ws2 params' ws3 (coerce t)) <$>
+  (validateDecoratorIndentation dec) <*>
   checkIndent idnt <*>
   validateParamsIndentation params <*>
   validateSuiteIndentation idnt s

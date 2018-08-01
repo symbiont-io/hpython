@@ -60,7 +60,8 @@ _KeywordParam =
        (coerce -> a) -> Left a)
 
 _Fundef ::
-     Prism (Statement v a) (Statement '[] a) ( Indents a
+     Prism (Statement v a) (Statement '[] a) ( (Maybe (Decorator v a))
+                                             , Indents a
                                              , a
                                              , NonEmpty Whitespace
                                              , Ident v a
@@ -68,7 +69,8 @@ _Fundef ::
                                              , CommaSep (Param v a)
                                              , [Whitespace]
                                              , (Maybe ([Whitespace] ,Type v a))
-                                             , Suite v a) ( Indents a
+                                             , Suite v a) ( (Maybe (Decorator '[] a))
+                                                          , Indents a
                                                           , a
                                                           , NonEmpty Whitespace
                                                           , Ident '[] a
@@ -79,11 +81,11 @@ _Fundef ::
                                                           , Suite '[] a)
 _Fundef =
   prism
-    (\(idnt, a, b, c, d, e, f, t, g) ->
-       CompoundStatement (Fundef idnt a b c d e f t g))
+    (\(dec, idnt, a, b, c, d, e, f, t, g) ->
+       CompoundStatement (Fundef dec idnt a b c d e f t g))
     (\case
-       (coerce -> CompoundStatement (Fundef idnt a b c d e f t g)) ->
-         Right (idnt, a, b, c, d, e, f, t, g)
+       (coerce -> CompoundStatement (Fundef dec idnt a b c d e f t g)) ->
+         Right (dec, idnt, a, b, c, d, e, f, t, g)
        (coerce -> a) -> Left a)
 
 _Call ::
@@ -134,8 +136,8 @@ instance HasIndents Suite where
 instance HasIndents CompoundStatement where
   _Indents fun s =
     case s of
-      Fundef idnt a b c d e f t g ->
-        (\idnt' -> Fundef idnt' a b c d e f t) <$> fun idnt <*> _Indents fun g
+      Fundef dec idnt a b c d e f t g ->
+        (\idnt' -> Fundef dec idnt' a b c d e f t) <$> fun idnt <*> _Indents fun g
       If idnt a b c d elifs e ->
         (\idnt' -> If idnt' a b c) <$> fun idnt <*> _Indents fun d <*>
         traverse
@@ -188,8 +190,8 @@ instance HasNewlines Suite where
 instance HasNewlines CompoundStatement where
   _Newlines fun s =
     case s of
-      Fundef idnt ann ws1 name ws2 params ws3 t s ->
-        Fundef idnt ann ws1 name ws2 params ws3 t <$> _Newlines fun s
+      Fundef dec idnt ann ws1 name ws2 params ws3 t s ->
+        Fundef dec idnt ann ws1 name ws2 params ws3 t <$> _Newlines fun s
       If idnt ann ws1 cond s elifs els ->
         If idnt ann ws1 cond <$> _Newlines fun s <*>
         traverseOf (traverse . _4 . _Newlines) fun elifs <*>

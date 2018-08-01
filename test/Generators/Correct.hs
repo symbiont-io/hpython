@@ -442,7 +442,7 @@ genCompoundStatement =
                 })
             (genSuite genBlock)) $
         \b ->
-      Fundef <$>
+      Fundef Nothing <$>
         use currentIndentation <*> pure () <*>
         genWhitespaces1 <*> genIdent <*> genWhitespaces <*> pure a <*>
         genWhitespaces <*> pure Nothing <*> pure b

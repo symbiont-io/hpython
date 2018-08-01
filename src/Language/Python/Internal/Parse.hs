@@ -858,7 +858,8 @@ compoundStatement =
   forSt
   where
     fundef =
-      (\a (tkDef, defSpaces) -> Fundef a (pyTokenAnn tkDef) (NonEmpty.fromList defSpaces)) <$>
+      (\dec a (tkDef, defSpaces) -> Fundef dec a (pyTokenAnn tkDef) (NonEmpty.fromList defSpaces)) <$>
+      maybeDecorator <*>
       indents <*>
       token space (TkDef ()) <*>
       identifier space <*>
@@ -962,6 +963,18 @@ compoundStatement =
     maybeTypeAnn = optional ((,) <$> 
         (snd <$> token space (TkArrow())) <*>
         typeAnnotation)
+
+    parseDecoratorIdentifier :: Parser ann (Ident '[] ann)
+    parseDecoratorIdentifier = do
+      curTk <- currentToken
+      case curTk of
+        TkAt s ann -> do
+          Parser $ consumed ann
+          pure $ MkIdent ann s []
+        _ -> Parser . throwError $ ExpectedIdentifier curTk
+
+    maybeDecorator :: Parser ann (Maybe (Decorator '[] ann))
+    maybeDecorator = optional (Decorator <$>  indents <*> parseDecoratorIdentifier <*> eol)
 
 module_ :: Parser ann (Module '[] ann)
 module_ =

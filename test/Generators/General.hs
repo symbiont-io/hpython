@@ -243,7 +243,7 @@ genCompoundStatement =
   sizedRecursive
     [ sized2M
         (\a b ->
-           Fundef <$> genIndents <*> pure () <*> genWhitespaces1 <*> genIdent <*>
+           Fundef Nothing <$> genIndents <*> pure () <*> genWhitespaces1 <*> genIdent <*>
            genWhitespaces <*>
            pure a <*>
            genWhitespaces <*> pure Nothing <*>

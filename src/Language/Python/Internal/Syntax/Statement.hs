@@ -99,8 +99,8 @@ instance HasBlocks Suite where
   _Blocks f (Suite a b c d e) = Suite a b c d <$> f e
 
 instance HasBlocks CompoundStatement where
-  _Blocks f (Fundef idnt a ws1 name ws2 params ws3 t s) =
-    Fundef idnt a ws1 (coerce name) ws2 (coerce params) ws3 (coerce t) <$> _Blocks f s
+  _Blocks f (Fundef dec idnt a ws1 name ws2 params ws3 t s) =
+    Fundef (coerce dec) idnt a ws1 (coerce name) ws2 (coerce params) ws3 (coerce t) <$> _Blocks f s
   _Blocks f (If idnt a ws1 e1 s elifs b') =
     If idnt a ws1 (coerce e1) <$>
     _Blocks f s <*>
@@ -154,8 +154,8 @@ instance Plated (Statement '[] a) where
   plate fun (CompoundStatement s) =
     CompoundStatement <$>
     case s of
-      Fundef idnt a ws1 b ws2 c ws3 t s ->
-        Fundef idnt a ws1 b ws2 c ws3 t <$> _Statements fun s
+      Fundef dec idnt a ws1 b ws2 c ws3 t s ->
+        Fundef dec idnt a ws1 b ws2 c ws3 t <$> _Statements fun s
       If idnt a ws1 b s elifs sts' ->
         If idnt a ws1 b <$>
         _Statements fun s <*>
@@ -358,10 +358,17 @@ data Suite v a
       (Block v a)
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
+data Decorator v a 
+  = Decorator (Indents a) (Ident v a) Newline
+  -- ^ '@' <ident>
+  deriving (Eq, Show, Functor, Foldable, Traversable)
+
 data CompoundStatement (v :: [*]) a
-  -- ^ 'def' <spaces> <ident> '(' <spaces> stuff ')' <spaces> ( '->' <type>)? :' <spaces> <newline>
+  -- ^ ( '@' <identifier>)? 
+  --   'def' <spaces> <ident> '(' <spaces> stuff ')' <spaces> ( '->' <type>)? :' <spaces> <newline>
   --   <block>
   = Fundef
+      (Maybe (Decorator v a))
       (Indents a) a
       (NonEmpty Whitespace) (Ident v a)
       [Whitespace] (CommaSep (Param v a))
@@ -425,8 +432,8 @@ instance HasExprs Suite where
   _Exprs f (Suite a b c d e) = Suite a b c d <$> _Exprs f e
 
 instance HasExprs CompoundStatement where
-  _Exprs f (Fundef idnt a ws1 name ws2 params ws3 t s) =
-    Fundef idnt a ws1 (coerce name) ws2 <$>
+  _Exprs f (Fundef dec idnt a ws1 name ws2 params ws3 t s) =
+    Fundef (coerce dec) idnt a ws1 (coerce name) ws2 <$>
     (traverse._Exprs) f params <*>
     pure ws3 <*> pure (coerce t) <*>
     _Exprs f s

@@ -189,7 +189,9 @@ parseToken =
     , char '^' *> (TkCaretEq <$ char '=' <|> pure TkCaret)
     , char '|' *> (TkPipeEq <$ char '=' <|> pure TkPipe)
     , char '&' *> (TkAmpersandEq <$ char '=' <|> pure TkAmpersand)
-    , TkAtEq <$ string "@="
+    , char '@' *> (TkAtEq <$ char '=' <|> fmap TkAt ((:) <$>
+                    satisfy isIdentifierStart <*>
+                    many (satisfy isIdentifierChar)))
     , char '+' *> (TkPlusEq <$ char '=' <|> pure TkPlus)
     , char '-' *> (TkMinusEq <$ char '=' <|> TkArrow <$ char '>' <|> pure TkMinus)
     , char '%' *> (TkPercentEq <$ char '=' <|> pure TkPercent)

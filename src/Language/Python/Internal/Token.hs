@@ -93,6 +93,7 @@ data PyToken a
   | TkCaret a
   | TkAmpersand a
   | TkArrow a
+  | TkAt String a
   deriving (Eq, Show, Functor)
 deriveEq1 ''PyToken
 
@@ -183,3 +184,4 @@ pyTokenAnn tk =
     TkDoubleStarEq a -> a
     TkDoubleSlashEq a -> a
     TkArrow a -> a
+    TkAt _ a -> a

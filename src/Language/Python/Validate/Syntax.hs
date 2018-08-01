@@ -351,11 +351,11 @@ validateCompoundStatementSyntax
      )
   => CompoundStatement v a
   -> ValidateSyntax e (CompoundStatement (Nub (Syntax ': v)) a)
-validateCompoundStatementSyntax (Fundef idnts a ws1 name ws2 params ws3 t body) =
+validateCompoundStatementSyntax (Fundef dec idnts a ws1 name ws2 params ws3 t body) =
   let
     paramIdents = params ^.. folded.unvalidated.paramName.identValue
   in
-    Fundef idnts a ws1 <$>
+    Fundef (coerce dec) idnts a ws1 <$>
     validateIdent name <*>
     pure ws2 <*>
     validateParamsSyntax params <*>

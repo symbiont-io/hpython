@@ -19,7 +19,8 @@ import           Language.Python.Syntax
 -- Written without the DSL
 append_to =
   CompoundStatement $
-  Fundef
+  Fundef  
+    Nothing
     (Indents [] ())
     ()
     [Space]
