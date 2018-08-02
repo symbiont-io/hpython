@@ -797,9 +797,17 @@ commaSep1' ws pa =
 typeAnnotation :: Parser ann (Type '[] ann)
 typeAnnotation =
   do
-    a <- identifier anySpace
-    b <- optional ((,,) <$> (token anySpace (TkLeftBracket ())) <*> commaSep1 anySpace typeAnnotation <*> (token anySpace (TkRightBracket ())))
-    pure $ Type (_identAnnotation a) a ((\(_,a,_) -> a) <$> b)
+    a <- reference
+    b <- optional ((,,) <$> token anySpace (TkLeftBracket ()) <*> commaSep1 anySpace typeAnnotation <*> token anySpace (TkRightBracket ()))
+    pure $ Type (referenceAnnotation a) a ((\(_,a,_) -> a) <$> b)
+
+reference :: Parser ann (Reference '[] ann)
+reference = do
+  i <- identifier anySpace
+  r <- optional (tokenEq (TkDot ()) *> reference)
+  case r of
+    Just ref -> pure $ Chain i ref 
+    Nothing  -> pure $ Id i
 
 
 param :: Parser ann (Param '[] ann)

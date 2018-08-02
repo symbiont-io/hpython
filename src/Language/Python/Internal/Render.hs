@@ -918,9 +918,13 @@ renderBinOp (ShiftRight _ ws) = TkShiftRight () `cons` foldMap renderWhitespace 
 
 renderType :: Type v a -> RenderOutput
 renderType (Type _ name Nothing) =
-  renderIdent name
+  renderReference name
 renderType (Type _ name (Just cs1)) =
-  renderIdent name <> singleton (TkLeftBracket ()) <> renderCommaSep1 renderType cs1 <> singleton (TkRightBracket ())
+  renderReference name <> singleton (TkLeftBracket ()) <> renderCommaSep1 renderType cs1 <> singleton (TkRightBracket ())
+
+renderReference :: Reference v a -> RenderOutput
+renderReference (Id name)         = renderIdent name
+renderReference (Chain name rest) = renderIdent name <> singleton (TkDot ()) <> renderReference rest 
 
 renderIndents :: Indents a -> RenderOutput
 renderIndents (Indents is _) = foldMap renderIndent is

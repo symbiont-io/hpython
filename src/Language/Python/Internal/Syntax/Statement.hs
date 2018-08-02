@@ -32,10 +32,19 @@ import Language.Python.Internal.Syntax.Whitespace
 class HasStatements s where
   _Statements :: Traversal (s v a) (s '[] a) (Statement v a) (Statement '[] a)
 
+data Reference (v :: [*]) a =
+    Id (Ident v a)
+  | Chain (Ident v a) (Reference v a)
+  deriving (Eq, Show, Functor, Foldable, Traversable)
+
+referenceAnnotation :: Reference v a -> a
+referenceAnnotation (Id idt) = _identAnnotation idt
+referenceAnnotation (Chain idt _) = _identAnnotation idt
+
 data Type (v :: [*]) a 
   = Type
   {  _typeAnn :: a
-  ,  _typeName :: Ident v a 
+  ,  _typeName :: Reference v a 
   ,  _typeParams :: Maybe (CommaSep1 (Type v a))
   }
   deriving (Eq, Show, Functor, Foldable, Traversable)

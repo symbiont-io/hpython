@@ -251,7 +251,7 @@ genCompoundStatement =
         (genSizedCommaSep $ genParam genExpr)
         (genSuite genBlock)
     , sized4M
-        (\a b c d ->
+        (\a b c d ->  
            If <$> genIndents <*> pure () <*> genWhitespaces <*> pure a <*>
            pure b <*>
            pure c <*>
