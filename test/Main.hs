@@ -197,6 +197,8 @@ main = do
   check $ statement_parse_print "def fun(a:int):\n    return 1"
   check $ statement_parse_print "def fun(a:str) ->  int:\n    return 1"
   check $ statement_parse_print "@decorate\ndef fun(a:str) ->  int:\n    return 1"
+  check $ statement_parse_print "@decorate\ndef fun(a:foo.str) ->  bar.int:\n    return 1"
+  check $ statement_parse_print "def fun(a,b):\n    return a // b"
   checkParallel lexerParserTests
   let file = "hedgehog-test.py"
   check . withTests 200 $ syntax_expr file
