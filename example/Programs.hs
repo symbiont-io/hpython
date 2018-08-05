@@ -20,39 +20,37 @@ import           Language.Python.Syntax
 append_to =
   CompoundStatement $
   Fundef  
-    Nothing
-    (Indents [] ())
     ()
+    []
+    (Indents [] ())
     [Space]
     "append_to"
     []
     (CommaSepMany (PositionalParam () "element" Nothing) [Space] $
      CommaSepOne (KeywordParam () "to" Nothing [] (List () [] Nothing [])))
     [] Nothing
-    (Suite () [] Nothing LF $
+    (SuiteMany () [] (LF Nothing) $
      Block
-       [ Right $
-         SmallStatements
-           (Indents [replicate 4 Space ^. from indentWhitespaces] ())
-           (Expr () $
-            Call
-              ()
-              (Deref () (Ident () "to") [] "append")
-              []
-              (Just $
-               CommaSepOne1' (PositionalArg () (Ident () "element")) Nothing)
-              [])
-           []
-           Nothing
-           (Just LF)
-       , Right $
-         SmallStatements
-           (Indents [replicate 4 Space ^. from indentWhitespaces] ())
-           (Return () [Space] (Just $ Ident () "to"))
-           []
-           Nothing
-           (Just LF)
-       ])
+     [ Right $
+       SmallStatements
+         (Indents [replicate 4 Space ^. from indentWhitespaces] ())
+         (Expr () $
+          Call ()
+            (Deref () (Ident () "to") [] "append")
+            []
+            (Just $ CommaSepOne1' (PositionalArg () (Ident () "element")) Nothing)
+            [])
+         []
+         Nothing
+         (Right $ LF Nothing)
+     , Right $
+       SmallStatements
+         (Indents [replicate 4 Space ^. from indentWhitespaces] ())
+         (Return () [Space] (Just $ Ident () "to"))
+         []
+         Nothing
+         (Right $ LF Nothing)
+     ])
 
 -- |
 -- @
@@ -115,12 +113,12 @@ yes =
 everything =
   Module
     [ Right append_to
-    , Left (Indents [] (), Nothing, Just LF)
+    , Left (Indents [] (), Nothing, Just $ LF Nothing)
     , Right append_to'
-    , Left (Indents [] (), Nothing, Just LF)
+    , Left (Indents [] (), Nothing, Just $ LF Nothing)
     , Right fact_tr
-    , Left (Indents [] (), Nothing, Just LF)
+    , Left (Indents [] (), Nothing, Just $ LF Nothing)
     , Right spin
-    , Left (Indents [] (), Nothing, Just LF)
+    , Left (Indents [] (), Nothing, Just $ LF Nothing)
     , Right yes
     ]

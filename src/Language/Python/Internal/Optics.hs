@@ -8,19 +8,18 @@
 
 module Language.Python.Internal.Optics where
 
-import           Control.Lens.Fold               (Fold)
-import           Control.Lens.Getter             (Getter, to)
-import           Control.Lens.Prism              (Prism, prism, _Left, _Right)
-import           Control.Lens.Setter             ((.~))
-import           Control.Lens.TH                 (makeLenses)
-import           Control.Lens.Traversal          (Traversal, Traversal',
-                                                  failing, traverseOf)
-import           Control.Lens.Tuple              (_3, _4)
-import           Control.Lens.Wrapped            (_Wrapped)
-import           Data.Coerce                     (Coercible, coerce)
-import           Data.Function                   ((&))
-import           Data.List.NonEmpty
-import           Language.Python.Internal.Syntax
+import Control.Lens.Fold (Fold)
+import Control.Lens.Getter (Getter, to)
+import Control.Lens.Prism (Prism, prism, _Left, _Right)
+import Control.Lens.Setter ((.~))
+import Control.Lens.TH (makeLenses)
+import Control.Lens.Traversal (Traversal, Traversal', failing, traverseOf)
+import Control.Lens.Tuple (_3, _4)
+import Control.Lens.Wrapped (_Wrapped)
+import Data.Coerce (Coercible, coerce)
+import Data.Function ((&))
+import Data.List.NonEmpty
+import Language.Python.Internal.Syntax
 
 class Validated (s :: [*] -> * -> *) where
   unvalidated :: Getter (s v a) (s '[] a)
@@ -28,17 +27,13 @@ class Validated (s :: [*] -> * -> *) where
     Getter (s v a) (s '[] a)
   unvalidated = to coerce
 
-instance Validated Expr
-
-instance Validated Statement
-
-instance Validated Block
-
-instance Validated Ident
-
-instance Validated Param
-
-instance Validated Suite
+instance Validated Expr where
+instance Validated Statement where
+instance Validated Block where
+instance Validated Ident where
+instance Validated Param where
+instance Validated Suite where
+instance Validated WithItem where
 
 data KeywordParam v a = MkKeywordParam
   { _kpAnn             :: a
@@ -56,48 +51,43 @@ _KeywordParam =
   prism
     (\(MkKeywordParam a b d t e) -> KeywordParam a b d t e)
     (\case
-       (coerce -> KeywordParam a b d t e) -> Right (MkKeywordParam a b d t e)
-       (coerce -> a) -> Left a)
+        (coerce -> KeywordParam a b d t e) -> Right (MkKeywordParam a b d t e)
+        (coerce -> a) -> Left a)
 
-_Fundef ::
-     Prism (Statement v a) (Statement '[] a) ( (Maybe (Decorator v a))
-                                             , Indents a
-                                             , a
-                                             , NonEmpty Whitespace
-                                             , Ident v a
-                                             , [Whitespace]
-                                             , CommaSep (Param v a)
-                                             , [Whitespace]
-                                             , (Maybe ([Whitespace] ,Type v a))
-                                             , Suite v a) ( (Maybe (Decorator '[] a))
-                                                          , Indents a
-                                                          , a
-                                                          , NonEmpty Whitespace
-                                                          , Ident '[] a
-                                                          , [Whitespace]
-                                                          , CommaSep (Param '[] a)
-                                                          , [Whitespace]
-                                                          , (Maybe ([Whitespace],Type '[] a))
-                                                          , Suite '[] a)
+_Fundef
+  :: Prism
+       (Statement v a)
+       (Statement '[] a)
+       ( a
+       , [Decorator v a]
+       , Indents a
+       , NonEmpty Whitespace, Ident v a
+       , [Whitespace], CommaSep (Param v a)
+       , [Whitespace], (Maybe ([Whitespace] ,Type v a))
+       , Suite v a
+       )
+       ( a
+       , [Decorator '[] a]
+       , Indents a
+       , NonEmpty Whitespace, Ident '[] a
+       , [Whitespace], CommaSep (Param '[] a)
+       , [Whitespace], (Maybe ([Whitespace],Type '[] a))
+       ,  Suite '[] a
+       )
 _Fundef =
   prism
-    (\(dec, idnt, a, b, c, d, e, f, t, g) ->
-       CompoundStatement (Fundef dec idnt a b c d e f t g))
+    (\(idnt, a, b, c, d, e, f, g, t, h) -> CompoundStatement (Fundef idnt a b c d e f g t h))
     (\case
-       (coerce -> CompoundStatement (Fundef dec idnt a b c d e f t g)) ->
-         Right (dec, idnt, a, b, c, d, e, f, t, g)
-       (coerce -> a) -> Left a)
+        (coerce -> CompoundStatement (Fundef idnt a b c d e f g t h)) ->
+          Right (idnt, a, b, c, d, e, f, g, t, h)
+        (coerce -> a) -> Left a)
 
-_Call ::
-     Prism (Expr v a) (Expr '[] a) ( a
-                                   , Expr v a
-                                   , [Whitespace]
-                                   , Maybe (CommaSep1' (Arg v a))
-                                   , [Whitespace]) ( a
-                                                   , Expr '[] a
-                                                   , [Whitespace]
-                                                   , Maybe (CommaSep1' (Arg '[] a))
-                                                   , [Whitespace])
+_Call
+  :: Prism
+       (Expr v a)
+       (Expr '[] a)
+       (a, Expr v a, [Whitespace], Maybe (CommaSep1' (Arg v a)), [Whitespace])
+       (a, Expr '[] a, [Whitespace], Maybe (CommaSep1' (Arg '[] a)), [Whitespace])
 _Call =
   prism
     (\(a, b, c, d, e) -> Call a b c d e)
@@ -123,21 +113,30 @@ class HasIndents s where
   _Indents :: Traversal' (s '[] a) (Indents a)
 
 instance HasIndents Statement where
-  _Indents f (SmallStatements idnt a b c d) =
-    (\idnt' -> SmallStatements idnt' a b c d) <$> f idnt
+  _Indents f (SmallStatements idnt a b c e) =
+    (\idnt' -> SmallStatements idnt' a b c e) <$> f idnt
   _Indents f (CompoundStatement c) = CompoundStatement <$> _Indents f c
 
 instance HasIndents Block where
   _Indents = _Statements . _Indents
 
 instance HasIndents Suite where
-  _Indents f (Suite a b c d e) = Suite a b c d <$> _Indents f e
+  _Indents f (SuiteOne a b c d)  = pure $ SuiteOne a b c d
+  _Indents f (SuiteMany a b c e) = SuiteMany a b c <$> _Indents f e
+
+instance HasIndents Decorator where
+  _Indents fun (Decorator a b c d e) =
+    (\b' -> Decorator a b' c d e) <$>
+    fun b
 
 instance HasIndents CompoundStatement where
   _Indents fun s =
     case s of
-      Fundef dec idnt a b c d e f t g ->
-        (\idnt' -> Fundef dec idnt' a b c d e f t) <$> fun idnt <*> _Indents fun g
+      Fundef a decos idnt b c d e f t g ->
+        (\decos' idnt' -> Fundef a decos' idnt' b c d e f t) <$>
+        traverse (_Indents fun) decos <*>
+        fun idnt <*>
+        _Indents fun g
       If idnt a b c d elifs e ->
         (\idnt' -> If idnt' a b c) <$> fun idnt <*> _Indents fun d <*>
         traverse
@@ -175,8 +174,15 @@ instance HasIndents CompoundStatement where
           (\(idnt, a, b) ->
              (\idnt' -> (,,) idnt' a) <$> fun idnt <*> _Indents fun b)
           g
-      ClassDef idnt a b c d e ->
-        (\idnt' -> ClassDef idnt' a b c d) <$> fun idnt <*> _Indents fun e
+      ClassDef a decos idnt b c d e ->
+        (\decos' idnt' -> ClassDef a decos' idnt' b c d) <$>
+        traverse (_Indents fun) decos <*>
+        fun idnt <*>
+        _Indents fun e
+      With a b c d e ->
+        (\a' -> With a' b c d) <$>
+        fun a <*>
+        _Indents fun e
 
 class HasNewlines s where
   _Newlines :: Traversal' (s v a) Newline
@@ -185,13 +191,20 @@ instance HasNewlines Block where
   _Newlines f (Block b) = Block <$> (traverse . _Right . _Newlines) f b
 
 instance HasNewlines Suite where
-  _Newlines f (Suite a b c d e) = Suite a b c <$> f d <*> _Newlines f e
+  _Newlines f (SuiteOne a b d e)  = pure $ SuiteOne a b d e
+  _Newlines f (SuiteMany a b d e) = SuiteMany a b <$> f d <*> _Newlines f e
+
+instance HasNewlines Decorator where
+  _Newlines fun (Decorator a b c d e) =
+    Decorator a b c d <$> fun e
 
 instance HasNewlines CompoundStatement where
   _Newlines fun s =
     case s of
-      Fundef dec idnt ann ws1 name ws2 params ws3 t s ->
-        Fundef dec idnt ann ws1 name ws2 params ws3 t <$> _Newlines fun s
+      Fundef ann decos idnt ws1 name ws2 params ws3 t s ->
+        (\decos' -> Fundef ann decos' idnt ws1 name ws2 params ws3 t) <$>
+        traverse (_Newlines fun) decos <*>
+        _Newlines fun s
       If idnt ann ws1 cond s elifs els ->
         If idnt ann ws1 cond <$> _Newlines fun s <*>
         traverseOf (traverse . _4 . _Newlines) fun elifs <*>
@@ -206,10 +219,12 @@ instance HasNewlines CompoundStatement where
         TryFinally idnt a b <$> _Newlines fun c <*> pure idnt2 <*> pure f <*>
         _Newlines fun g
       For idnt a b c d e f g ->
-        For idnt a b c d e <$> _Newlines fun f <*>
-        (traverse . _3 . _Newlines) fun g
-      ClassDef idnt a b c d e ->
-        ClassDef idnt a b (coerce c) (coerce d) <$> _Newlines fun e
+        For idnt a b c d e <$> _Newlines fun f <*> (traverse._3._Newlines) fun g
+      ClassDef a decos idnt b c d e ->
+        (\decos' -> ClassDef a decos' idnt b (coerce c) (coerce d)) <$>
+        traverse (_Newlines fun) decos <*>
+        _Newlines fun e
+      With a b c d e -> With a b c (coerce d) <$> _Newlines fun e
 
 instance HasNewlines Statement where
   _Newlines f (CompoundStatement c) = CompoundStatement <$> _Newlines f c
@@ -228,22 +243,25 @@ assignTargets f e =
     Parens a b c d -> (\c' -> Parens a b c' d) <$> assignTargets f c
     Ident a b -> Ident a <$> f b
     Tuple a b c d ->
-      (\b' d' -> Tuple a b' c d') <$> assignTargets f b <*>
-      (traverse . traverse . assignTargets) f d
-    Yield {} -> pure $ coerce e
-    YieldFrom {} -> pure $ coerce e
-    Ternary {} -> pure $ coerce e
-    ListComp {} -> pure $ coerce e
-    Deref {} -> pure $ coerce e
-    Subscript {} -> pure $ coerce e
-    Call {} -> pure $ coerce e
-    None {} -> pure $ coerce e
-    BinOp {} -> pure $ coerce e
-    Negate {} -> pure $ coerce e
-    Int {} -> pure $ coerce e
-    Bool {} -> pure $ coerce e
-    String {} -> pure $ coerce e
-    Not {} -> pure $ coerce e
-    Dict {} -> pure $ coerce e
-    Set {} -> pure $ coerce e
-    Generator {} -> pure $ coerce e
+      (\b' d' -> Tuple a b' c d') <$>
+      assignTargets f b <*>
+      (traverse.traverse.assignTargets) f d
+    Lambda{} -> pure $ coerce e
+    Yield{} -> pure $ coerce e
+    YieldFrom{} -> pure $ coerce e
+    Ternary{} -> pure $ coerce e
+    ListComp{} -> pure $ coerce e
+    Deref{} -> pure $ coerce e
+    Subscript{} -> pure $ coerce e
+    Call{} -> pure $ coerce e
+    None{} -> pure $ coerce e
+    BinOp{} -> pure $ coerce e
+    UnOp{} -> pure $ coerce e
+    Int{} -> pure $ coerce e
+    Float{} -> pure $ coerce e
+    Bool{} -> pure $ coerce e
+    String{} -> pure $ coerce e
+    Not{} -> pure $ coerce e
+    Dict{} -> pure $ coerce e
+    Set{} -> pure $ coerce e
+    Generator{} -> pure $ coerce e

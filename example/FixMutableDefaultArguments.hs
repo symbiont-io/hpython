@@ -16,7 +16,7 @@ import Language.Python.Syntax
 
 fixMutableDefaultArguments :: Statement '[] () -> Maybe (Statement '[] ())
 fixMutableDefaultArguments input = do
-  (_,idnts, _, _, name, _, params, _, _, suite) <- input ^? _Fundef
+  (_,  _,idnts, _, name, _, params, _, _, suite) <- input ^? _Fundef
 
   let paramsList = toList params
   _ <- paramsList ^? folded._KeywordParam.filtered (isMutable._kpExpr)
@@ -48,7 +48,7 @@ fixMutableDefaultArguments input = do
     isMutable Deref{} = True
     isMutable Call{} = True
     isMutable BinOp{} = True
-    isMutable Negate{} = True
+    isMutable UnOp{} = True
     isMutable Not{} = True
     isMutable Dict{} = True
     isMutable Ident{} = True
@@ -60,3 +60,4 @@ fixMutableDefaultArguments input = do
     isMutable (Ternary _ _ _ a _ b) = isMutable a || isMutable b
     isMutable (Parens _ _ a _) = isMutable a
     isMutable (Tuple _ a _ as) = isMutable a || any (any isMutable) as
+    isMutable _ = False

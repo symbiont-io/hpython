@@ -1,19 +1,18 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-import           Control.Monad                          ((<=<))
-import           Data.Foldable                          (traverse_)
-import           Data.Monoid                            ((<>))
-import           Language.Python.Internal.Lexer         (indentation,
-                                                         logicalLines, nested,
-                                                         tokenize)
-import           Language.Python.Internal.Parse         (module_, runParser)
-import           Language.Python.Internal.Render        (renderModule,
-                                                         showRenderOutput)
-import           Language.Python.Internal.Syntax.Module (Module)
-import           Language.Python.Internal.Token         ()
-import           System.Environment                     (getArgs)
-import qualified Text.Trifecta                          as Trifecta
+import Control.Monad ((<=<))
+import Data.Foldable (traverse_)
+import Data.Monoid ((<>))
+import Data.Text.Lazy (unpack)
+import Language.Python.Internal.Lexer (indentation, logicalLines, nested,
+                                       tokenize)
+import Language.Python.Internal.Parse (module_, runParser)
+import Language.Python.Internal.Render (renderModule, showRenderOutput)
+import Language.Python.Internal.Syntax.Module (Module)
+import Language.Python.Internal.Token ()
+import System.Environment (getArgs)
+import qualified Text.Trifecta as Trifecta
 
 tokens str = do
   let res = tokenize str
@@ -52,4 +51,4 @@ readPy :: FilePath -> IO ()
 readPy f = do
   code <- readFile f
   let res = toPython code
-  putStrLn $ either id (showRenderOutput . renderModule) res
+  putStrLn $ either id (unpack . showRenderOutput . renderModule) res

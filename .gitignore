@@ -17,3 +17,4 @@ TAGS
 __pycache__/
 .stack-work/
 hedgehog-test.py
+.vscode/

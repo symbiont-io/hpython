@@ -1,61 +1,131 @@
-{-# language LambdaCase #-}
-{-# language DataKinds, KindSignatures #-}
-{-# language TemplateHaskell #-}
-{-# language ScopedTypeVariables #-}
-{-# language MultiParamTypeClasses, FlexibleInstances #-}
-{-# language DeriveFunctor, DeriveFoldable, DeriveTraversable, DeriveGeneric #-}
-{-# language ExistentialQuantification #-}
+{-# LANGUAGE DataKinds                 #-}
+{-# LANGUAGE DeriveFoldable            #-}
+{-# LANGUAGE DeriveFunctor             #-}
+{-# LANGUAGE DeriveGeneric             #-}
+{-# LANGUAGE DeriveTraversable         #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleInstances         #-}
+{-# LANGUAGE KindSignatures            #-}
+{-# LANGUAGE LambdaCase                #-}
+{-# LANGUAGE MultiParamTypeClasses     #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TemplateHaskell           #-}
 module Language.Python.Internal.Syntax.Expr where
 
 import Control.Lens.Cons (_last)
 import Control.Lens.Fold ((^?), (^?!))
-import Control.Lens.Getter ((^.), getting)
-import Control.Lens.Lens (Lens, lens)
-import Control.Lens.Plated (Plated(..), gplate)
+import Control.Lens.Getter (getting, (^.))
+import Control.Lens.Lens (Lens, Lens', lens)
+import Control.Lens.Plated (Plated (..), gplate)
 import Control.Lens.Prism (_Just, _Left, _Right)
 import Control.Lens.Setter ((.~))
 import Control.Lens.TH (makeLenses)
 import Control.Lens.Traversal (Traversal, failing)
-import Data.Bifunctor (bimap)
 import Data.Bifoldable (bifoldMap)
+import Data.Bifunctor (bimap)
 import Data.Bitraversable (bitraverse)
 import Data.Coerce (coerce)
+import Data.Digit.Integral (integralDecDigits)
 import Data.Function ((&))
 import Data.List.NonEmpty (NonEmpty)
 import Data.Monoid ((<>))
-import Data.String (IsString(..))
+import Data.String (IsString (..))
 import GHC.Generics (Generic)
 
 import Language.Python.Internal.Syntax.BinOp
 import Language.Python.Internal.Syntax.CommaSep
 import Language.Python.Internal.Syntax.Ident
+import Language.Python.Internal.Syntax.Numbers
 import Language.Python.Internal.Syntax.Strings
+import Language.Python.Internal.Syntax.UnOp
 import Language.Python.Internal.Syntax.Whitespace
 
 -- | 'Traversal' over all the expressions in a term
 class HasExprs s where
   _Exprs :: Traversal (s v a) (s '[] a) (Expr v a) (Expr '[] a)
 
+
+data Reference (v :: [*]) a =
+    Id (Ident v a)
+  | Chain (Ident v a) (Reference v a)
+  deriving (Eq, Show, Functor, Foldable, Traversable)
+
+referenceAnnotation :: Reference v a -> a
+referenceAnnotation (Id idt)      = _identAnnotation idt
+referenceAnnotation (Chain idt _) = _identAnnotation idt
+
+data Type (v :: [*]) a
+  = Type
+  {  _typeAnn    :: a
+  ,  _typeName   :: Reference v a
+  ,  _typeParams :: Maybe (CommaSep1 (Type v a))
+  }
+  deriving (Eq, Show, Functor, Foldable, Traversable)
+
+
+data Param (v :: [*]) a
+  = PositionalParam
+  { _paramAnn  :: a
+  , _paramName :: Ident v a
+    -- : spaces type
+  , _patamType :: Maybe ([Whitespace], Type v a)
+  }
+  | KeywordParam
+  { _paramAnn                          :: a
+  , _paramName                         :: Ident v a
+  -- : spaces type
+  , _patamType                         :: Maybe ([Whitespace], Type v a)
+  -- = spaces
+  , _unsafeKeywordParamWhitespaceRight :: [Whitespace]
+  , _unsafeKeywordParamExpr            :: Expr v a
+  }
+  | StarParam
+  { _paramAnn                  :: a
+  -- '*' spaces
+  , _unsafeStarParamWhitespace :: [Whitespace]
+  , _paramName                 :: Ident v a
+  }
+  | DoubleStarParam
+  { _paramAnn                        :: a
+  -- '**' spaces
+  , _unsafeDoubleStarParamWhitespace :: [Whitespace]
+  , _paramName                       :: Ident v a
+  }
+  deriving (Eq, Show, Functor, Foldable, Traversable)
+
+paramAnn :: Lens' (Param v a) a
+paramAnn = lens _paramAnn (\s a -> s { _paramAnn = a})
+
+paramName :: Lens (Param v a) (Param '[] a) (Ident v a) (Ident v a)
+paramName = lens _paramName (\s a -> coerce $ s { _paramName = a})
+
+instance HasExprs Param where
+  _Exprs f (KeywordParam a name t ws2 expr) =
+    KeywordParam a (coerce name) <$> pure (coerce t) <*>  pure ws2 <*> f expr
+  _Exprs _ p@PositionalParam{} = pure $ coerce p
+  _Exprs _ p@StarParam{} = pure $ coerce p
+  _Exprs _ p@DoubleStarParam{} = pure $ coerce p
+
 data Arg (v :: [*]) a
   = PositionalArg
-  { _argAnn :: a
+  { _argAnn  :: a
   , _argExpr :: Expr v a
   }
   | KeywordArg
-  { _argAnn :: a
-  , _unsafeKeywordArgName :: Ident v a
+  { _argAnn                          :: a
+  , _unsafeKeywordArgName            :: Ident v a
   , _unsafeKeywordArgWhitespaceRight :: [Whitespace]
-  , _argExpr :: Expr v a
+  , _argExpr                         :: Expr v a
   }
   | StarArg
-  { _argAnn :: a
+  { _argAnn                  :: a
   , _unsafeStarArgWhitespace :: [Whitespace]
-  , _argExpr :: Expr v a
+  , _argExpr                 :: Expr v a
   }
   | DoubleStarArg
-  { _argAnn :: a
+  { _argAnn                        :: a
   , _unsafeDoubleStarArgWhitespace :: [Whitespace]
-  , _argExpr :: Expr v a
+  , _argExpr                       :: Expr v a
   }
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
@@ -130,20 +200,20 @@ instance HasTrailingWhitespace (CompFor v a) where
 
 data StringLiteral a
   = StringLiteral
-  { _stringLiteralAnn :: a
+  { _stringLiteralAnn          :: a
   , _unsafeStringLiteralPrefix :: Maybe StringPrefix
-  , _stringLiteralQuoteType :: QuoteType
-  , _stringLiteralType :: StringType
-  , _stringLiteralValue :: [PyChar]
-  , _stringLiteralWhitespace :: [Whitespace]
+  , _stringLiteralQuoteType    :: QuoteType
+  , _stringLiteralType         :: StringType
+  , _stringLiteralValue        :: [PyChar]
+  , _stringLiteralWhitespace   :: [Whitespace]
   }
   | BytesLiteral
-  { _stringLiteralAnn :: a
+  { _stringLiteralAnn         :: a
   , _unsafeBytesLiteralPrefix :: BytesPrefix
-  , _stringLiteralQuoteType :: QuoteType
-  , _stringLiteralType :: StringType
-  , _stringLiteralValue :: [PyChar]
-  , _stringLiteralWhitespace :: [Whitespace]
+  , _stringLiteralQuoteType   :: QuoteType
+  , _stringLiteralType        :: StringType
+  , _stringLiteralValue       :: [PyChar]
+  , _stringLiteralWhitespace  :: [Whitespace]
   }
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
@@ -155,14 +225,14 @@ instance HasTrailingWhitespace (StringLiteral a) where
           BytesLiteral _ _ _ _ _ ws -> ws)
       (\s ws -> case s of
           StringLiteral a b c d e _ -> StringLiteral a b c d e ws
-          BytesLiteral a b c d e _ -> BytesLiteral a b c d e ws)
+          BytesLiteral a b c d e _  -> BytesLiteral a b c d e ws)
 
 data DictItem (v :: [*]) a
   = DictItem
-  { _dictItemAnn :: a
-  , _dictItemKey :: Expr v a
+  { _dictItemAnn        :: a
+  , _dictItemKey        :: Expr v a
   , _dictItemWhitespace :: [Whitespace]
-  , _dictItemvalue :: Expr v a
+  , _dictItemvalue      :: Expr v a
   } deriving (Eq, Show, Functor, Foldable, Traversable)
 
 instance HasTrailingWhitespace (DictItem v a) where
@@ -194,11 +264,11 @@ instance HasTrailingWhitespace (Subscript v a) where
               Nothing ->
                 case c of
                   Nothing -> b
-                  Just e -> e ^. trailingWhitespace
+                  Just e  -> e ^. trailingWhitespace
               Just (e, f) ->
                 case f of
                   Nothing -> e
-                  Just g -> g ^. trailingWhitespace)
+                  Just g  -> g ^. trailingWhitespace)
       (\x ws ->
          case x of
           SubscriptExpr e -> SubscriptExpr $ e & trailingWhitespace .~ ws
@@ -208,155 +278,165 @@ instance HasTrailingWhitespace (Subscript v a) where
               Nothing ->
                 case c of
                   Nothing -> (ws, c, d)
-                  Just e -> (b, Just $ e & trailingWhitespace .~ ws, d)
+                  Just e  -> (b, Just $ e & trailingWhitespace .~ ws, d)
               Just (e, f) ->
                 case f of
                   Nothing -> (b, c, Just (ws, f))
                   Just g -> (b, c, Just (e, Just $ g & trailingWhitespace .~ ws)))
 
 data Expr (v :: [*]) a
-  = Yield
-  { _exprAnnotation :: a
+  = Lambda
+  { _exprAnnotation         :: a
+  , _unsafeLambdaWhitespace :: [Whitespace]
+  , _unsafeLambdaArgs       :: CommaSep (Param v a)
+  , _unsafeLambdaColon      :: [Whitespace]
+  , _unsafeLambdaBody       :: Expr v a
+  }
+  | Yield
+  { _exprAnnotation        :: a
   , _unsafeYieldWhitespace :: [Whitespace]
-  , _unsafeYieldValue :: Maybe (Expr v a)
+  , _unsafeYieldValue      :: Maybe (Expr v a)
   }
   | YieldFrom
-  { _exprAnnotation :: a
+  { _exprAnnotation        :: a
   , _unsafeYieldWhitespace :: [Whitespace]
-  , _unsafeFromWhitespace :: [Whitespace]
-  , _unsafeYieldFromValue :: Expr v a
+  , _unsafeFromWhitespace  :: [Whitespace]
+  , _unsafeYieldFromValue  :: Expr v a
   }
   | Ternary
-  { _exprAnnotation :: a
+  { _exprAnnotation               :: a
   -- expr
-  , _unsafeTernaryValue :: Expr v a
+  , _unsafeTernaryValue           :: Expr v a
   -- 'if' spaces
-  , _unsafeListCompWhitespaceIf :: [Whitespace]
+  , _unsafeListCompWhitespaceIf   :: [Whitespace]
   -- expr
-  , _unsafeTernaryCond :: Expr v a
+  , _unsafeTernaryCond            :: Expr v a
   -- 'else' spaces
   , _unsafeListCompWhitespaceElse :: [Whitespace]
   -- expr
-  , _unsafeTernaryElse :: Expr v a
+  , _unsafeTernaryElse            :: Expr v a
   }
   | ListComp
-  { _exprAnnotation :: a
+  { _exprAnnotation                :: a
   -- [ spaces
-  , _unsafeListCompWhitespaceLeft :: [Whitespace]
+  , _unsafeListCompWhitespaceLeft  :: [Whitespace]
   -- comprehension
-  , _unsafeListCompValue :: Comprehension v a
+  , _unsafeListCompValue           :: Comprehension v a
   -- ] spaces
   , _unsafeListCompWhitespaceRight :: [Whitespace]
   }
   | List
-  { _exprAnnotation :: a
+  { _exprAnnotation            :: a
   -- [ spaces
-  , _unsafeListWhitespaceLeft :: [Whitespace]
+  , _unsafeListWhitespaceLeft  :: [Whitespace]
   -- exprs
-  , _unsafeListValues :: Maybe (CommaSep1' (Expr v a))
+  , _unsafeListValues          :: Maybe (CommaSep1' (Expr v a))
   -- ] spaces
   , _unsafeListWhitespaceRight :: [Whitespace]
   }
   | Dict
-  { _exprAnnotation :: a
-  , _unsafeDictWhitespaceLeft :: [Whitespace]
-  , _unsafeDictValues :: Maybe (CommaSep1' (DictItem v a))
+  { _exprAnnotation            :: a
+  , _unsafeDictWhitespaceLeft  :: [Whitespace]
+  , _unsafeDictValues          :: Maybe (CommaSep1' (DictItem v a))
   , _unsafeDictWhitespaceRight :: [Whitespace]
   }
   | Set
-  { _exprAnnotation :: a
-  , _unsafeSetWhitespaceLeft :: [Whitespace]
-  , _unsafeSetValues :: CommaSep1' (Expr v a)
+  { _exprAnnotation           :: a
+  , _unsafeSetWhitespaceLeft  :: [Whitespace]
+  , _unsafeSetValues          :: CommaSep1' (Expr v a)
   , _unsafeSetWhitespaceRight :: [Whitespace]
   }
   | Deref
-  { _exprAnnotation :: a
+  { _exprAnnotation            :: a
   -- expr
-  , _unsafeDerefValueLeft :: Expr v a
+  , _unsafeDerefValueLeft      :: Expr v a
   -- . spaces
   , _unsafeDerefWhitespaceLeft :: [Whitespace]
   -- ident
-  , _unsafeDerefValueRight :: Ident v a
+  , _unsafeDerefValueRight     :: Ident v a
   }
   | Subscript
-  { _exprAnnotation :: a
+  { _exprAnnotation                 :: a
   -- expr
-  , _unsafeSubscriptValueLeft :: Expr v a
+  , _unsafeSubscriptValueLeft       :: Expr v a
   -- [ spaces
-  , _unsafeSubscriptWhitespaceLeft :: [Whitespace]
+  , _unsafeSubscriptWhitespaceLeft  :: [Whitespace]
   -- expr
-  , _unsafeSubscriptValueRight :: CommaSep1' (Subscript v a)
+  , _unsafeSubscriptValueRight      :: CommaSep1' (Subscript v a)
   -- ] spaces
   , _unsafeSubscriptWhitespaceRight :: [Whitespace]
   }
   | Call
-  { _exprAnnotation :: a
+  { _exprAnnotation            :: a
   -- expr
-  , _unsafeCallFunction :: Expr v a
+  , _unsafeCallFunction        :: Expr v a
   -- ( spaces
-  , _unsafeCallWhitespaceLeft :: [Whitespace]
+  , _unsafeCallWhitespaceLeft  :: [Whitespace]
   -- exprs
-  , _unsafeCallArguments :: Maybe (CommaSep1' (Arg v a))
+  , _unsafeCallArguments       :: Maybe (CommaSep1' (Arg v a))
   -- ) spaces
   , _unsafeCallWhitespaceRight :: [Whitespace]
   }
   | None
-  { _exprAnnotation :: a
+  { _exprAnnotation       :: a
   , _unsafeNoneWhitespace :: [Whitespace]
   }
   | BinOp
-  { _exprAnnotation :: a
-  , _unsafeBinOpExprLeft :: Expr v a
-  , _unsafeBinOpOp :: BinOp a
+  { _exprAnnotation       :: a
+  , _unsafeBinOpExprLeft  :: Expr v a
+  , _unsafeBinOpOp        :: BinOp a
   , _unsafeBinOpExprRight :: Expr v a
   }
-  | Negate
-  { _exprAnnotation :: a
-  -- - spaces
-  , _unsafeNegateWhitespace :: [Whitespace]
-  -- expr
-  , _unsafeNegateValue :: Expr v a
+  | UnOp
+  { _exprAnnotation  :: a
+  , _unsafeUnOpOp    :: UnOp a
+  , _unsafeUnOpValue :: Expr v a
   }
   | Parens
-  { _exprAnnotation :: a
+  { _exprAnnotation              :: a
   -- ( spaces
-  , _unsafeParensWhitespaceLeft :: [Whitespace]
+  , _unsafeParensWhitespaceLeft  :: [Whitespace]
   -- expr
-  , _unsafeParensValue :: Expr v a
+  , _unsafeParensValue           :: Expr v a
   -- ) spaces
   , _unsafeParensWhitespaceAfter :: [Whitespace]
   }
   | Ident
-  { _exprAnnotation :: a
+  { _exprAnnotation   :: a
   , _unsafeIdentValue :: Ident v a
   }
   | Int
-  { _exprAnnotation :: a
-  , _unsafeIntValue :: Integer
+  { _exprAnnotation      :: a
+  , _unsafeIntValue      :: IntLiteral a
   , _unsafeIntWhitespace :: [Whitespace]
   }
+  | Float
+  { _exprAnnotation        :: a
+  , _unsafeFloatValue      :: FloatLiteral a
+  , _unsafeFloatWhitespace :: [Whitespace]
+  }
   | Bool
-  { _exprAnnotation :: a
-  , _unsafeBoolValue :: Bool
+  { _exprAnnotation       :: a
+  , _unsafeBoolValue      :: Bool
   , _unsafeBoolWhitespace :: [Whitespace]
   }
   | String
-  { _exprAnnotation :: a
+  { _exprAnnotation           :: a
   , _unsafeStringLiteralValue :: NonEmpty (StringLiteral a)
   }
   | Tuple
-  { _exprAnnotation :: a
+  { _exprAnnotation        :: a
   -- expr
-  , _unsafeTupleHead :: Expr v a
+  , _unsafeTupleHead       :: Expr v a
   -- , spaces
   , _unsafeTupleWhitespace :: [Whitespace]
   -- [exprs]
-  , _unsafeTupleTail :: Maybe (CommaSep1' (Expr v a))
+  , _unsafeTupleTail       :: Maybe (CommaSep1' (Expr v a))
   }
   | Not
-  { _exprAnnotation :: a
+  { _exprAnnotation      :: a
   , _unsafeNotWhitespace :: [Whitespace]
-  , _unsafeNotValue :: Expr v a
+  , _unsafeNotValue      :: Expr v a
   }
   | Generator
   { _exprAnnotation :: a
@@ -368,6 +448,7 @@ instance HasTrailingWhitespace (Expr v a) where
   trailingWhitespace =
     lens
       (\case
+          Lambda _ _ _ _ a -> a ^. trailingWhitespace
           Yield _ ws Nothing -> ws
           Yield _ _ (Just e) -> e ^. trailingWhitespace
           YieldFrom _ _ _ e -> e ^. trailingWhitespace
@@ -379,10 +460,11 @@ instance HasTrailingWhitespace (Expr v a) where
           Subscript _ _ _ _ ws -> ws
           Call _ _ _ _ ws -> ws
           BinOp _ _ _ e -> e ^. trailingWhitespace
-          Negate _ _ e -> e ^. trailingWhitespace
+          UnOp _ _ e -> e ^. trailingWhitespace
           Parens _ _ _ ws -> ws
           Ident _ a -> a ^. getting trailingWhitespace
           Int _ _ ws -> ws
+          Float _ _ ws -> ws
           Bool _ _ ws -> ws
           String _ v -> v ^. trailingWhitespace
           Not _ _ e -> e ^. trailingWhitespace
@@ -393,6 +475,7 @@ instance HasTrailingWhitespace (Expr v a) where
           Generator  _ a -> a ^. trailingWhitespace)
       (\e ws ->
         case e of
+          Lambda a b c d f -> Lambda a b c d (f & trailingWhitespace .~ ws)
           Yield a _ Nothing -> Yield a ws Nothing
           Yield a b (Just c) -> Yield a b (Just $ c & trailingWhitespace .~ ws)
           YieldFrom a b c d -> YieldFrom a b c (d & trailingWhitespace .~ ws)
@@ -404,10 +487,11 @@ instance HasTrailingWhitespace (Expr v a) where
           Subscript a b c d _ -> Subscript a (coerce b) c d ws
           Call a b c d _ -> Call a (coerce b) c (coerce d) ws
           BinOp a b c e -> BinOp a (coerce b) c (e & trailingWhitespace .~ ws)
-          Negate a b c -> Negate a b (c & trailingWhitespace .~ ws)
+          UnOp a b c -> UnOp a b (c & trailingWhitespace .~ ws)
           Parens a b c _ -> Parens a b (coerce c) ws
           Ident a b -> Ident a (b & trailingWhitespace .~ ws)
           Int a b _ -> Int a b ws
+          Float a b _ -> Float a b ws
           Bool a b _ -> Bool a b ws
           String a v -> String a (v & trailingWhitespace .~ ws)
           Not a b c -> Not a b (c & trailingWhitespace .~ ws)
@@ -422,8 +506,16 @@ instance IsString (Expr '[] ()) where
   fromString s = Ident () (MkIdent () s [])
 
 instance Num (Expr '[] ()) where
-  fromInteger n = Int () n []
-  negate = Negate () []
+  fromInteger n
+    | n >= 0 = Int () (IntLiteralDec () $ integralDecDigits n ^?! _Right) []
+    | otherwise =
+        UnOp
+          ()
+          (Negate () [])
+          (Int () (IntLiteralDec () $ integralDecDigits (-n) ^?! _Right) [])
+
+  negate = UnOp () (Negate () [])
+
   (+) a = BinOp () (a & trailingWhitespace .~ [Space]) (Plus () [Space])
   (*) a = BinOp () (a & trailingWhitespace .~ [Space]) (Multiply () [Space])
   (-) a = BinOp () (a & trailingWhitespace .~ [Space]) (Minus () [Space])
@@ -443,16 +535,16 @@ shouldBracketLeft op left =
     lEntry =
       case left of
         BinOp _ _ lOp _ -> Just $ lookupOpEntry lOp operatorTable
-        _ -> Nothing
+        _               -> Nothing
 
     leftf =
       case entry ^. opAssoc of
         R | Just (OpEntry _ prec R) <- lEntry -> prec <= entry ^. opPrec
-        _ -> False
+        _                                     -> False
 
     leftf' =
       case (left, op) of
-        (Negate{}, Exp{}) -> True
+        (UnOp{}, Exp{}) -> True
         (Tuple{}, _) -> True
         (Not{}, BoolAnd{}) -> False
         (Not{}, BoolOr{}) -> False
@@ -469,12 +561,12 @@ shouldBracketRight op right =
     rEntry =
       case right of
         BinOp _ _ rOp _ -> Just $ lookupOpEntry rOp operatorTable
-        _ -> Nothing
+        _               -> Nothing
 
     rightf =
       case entry ^. opAssoc of
         L | Just (OpEntry _ prec L) <- rEntry -> prec <= entry ^. opPrec
-        _ -> False
+        _                                     -> False
 
     rightf' =
       case (op, right) of

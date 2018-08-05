@@ -4,9 +4,10 @@ module Language.Python.Internal.Token where
 
 import Data.Deriving (deriveEq1)
 
-import Language.Python.Internal.Syntax.Whitespace (Newline(..))
+import Language.Python.Internal.Syntax.Numbers (IntLiteral(..), FloatLiteral(..))
 import Language.Python.Internal.Syntax.Strings
   (StringPrefix(..), BytesPrefix(..), QuoteType(..), StringType(..), PyChar(..))
+import Language.Python.Internal.Syntax.Whitespace (Newline(..))
 
 data PyToken a
   = TkIf a
@@ -29,6 +30,7 @@ data PyToken a
   | TkGlobal a
   | TkNonlocal a
   | TkDel a
+  | TkLambda a
   | TkImport a
   | TkFrom a
   | TkAs a
@@ -37,11 +39,12 @@ data PyToken a
   | TkExcept a
   | TkFinally a
   | TkClass a
+  | TkWith a
   | TkFor a
   | TkIn a
   | TkYield a
-  | TkInt Integer a
-  | TkFloat Integer (Maybe Integer) a
+  | TkInt (IntLiteral a)
+  | TkFloat (FloatLiteral a)
   | TkIdent String a
   | TkString (Maybe StringPrefix) QuoteType StringType [PyChar] a
   | TkBytes BytesPrefix QuoteType StringType [PyChar] a
@@ -68,6 +71,7 @@ data PyToken a
   | TkDot a
   | TkPlus a
   | TkMinus a
+  | TkTilde a
   | TkComment String a
   | TkStar a
   | TkDoubleStar a
@@ -80,6 +84,7 @@ data PyToken a
   | TkMinusEq a
   | TkStarEq a
   | TkAtEq a
+  | TkAt a
   | TkSlashEq a
   | TkPercentEq a
   | TkAmpersandEq a
@@ -93,7 +98,6 @@ data PyToken a
   | TkCaret a
   | TkAmpersand a
   | TkArrow a
-  | TkAt String a
   deriving (Eq, Show, Functor)
 deriveEq1 ''PyToken
 
@@ -118,6 +122,7 @@ pyTokenAnn tk =
     TkGlobal a -> a
     TkNonlocal a -> a
     TkDel a -> a
+    TkLambda a -> a
     TkImport a -> a
     TkFrom a -> a
     TkAs a -> a
@@ -126,18 +131,20 @@ pyTokenAnn tk =
     TkExcept a -> a
     TkFinally a -> a
     TkClass a -> a
+    TkWith a -> a
     TkFor a -> a
     TkIn a -> a
     TkYield a -> a
     TkPlus a -> a
     TkMinus a -> a
+    TkTilde a -> a
     TkIf a -> a
     TkElse a -> a
     TkElif a -> a
     TkWhile a -> a
     TkAssert a -> a
-    TkInt _ a -> a
-    TkFloat _ _ a -> a
+    TkInt a -> _intLiteralAnn a
+    TkFloat a -> _floatLiteralAnn a
     TkIdent _ a -> a
     TkString _ _ _ _ a -> a
     TkBytes _ _ _ _ a -> a
@@ -174,6 +181,7 @@ pyTokenAnn tk =
     TkMinusEq a -> a
     TkStarEq a -> a
     TkAtEq a -> a
+    TkAt a -> a
     TkSlashEq a -> a
     TkPercentEq a -> a
     TkAmpersandEq a -> a
@@ -184,4 +192,3 @@ pyTokenAnn tk =
     TkDoubleStarEq a -> a
     TkDoubleSlashEq a -> a
     TkArrow a -> a
-    TkAt _ a -> a

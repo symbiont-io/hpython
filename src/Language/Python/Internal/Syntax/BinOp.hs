@@ -29,7 +29,7 @@ data BinOp a
   | NotEquals a [Whitespace]
   | Multiply a [Whitespace]
   | Divide a [Whitespace]
-  | IntDivide a [Whitespace]
+  | FloorDivide a [Whitespace]
   | Percent a [Whitespace]
   | Plus a [Whitespace]
   | BitOr a [Whitespace]
@@ -53,7 +53,7 @@ instance HasTrailingWhitespace (BinOp a) where
          BoolOr _ a -> a
          Multiply _ a -> a
          Divide _ a -> a
-         IntDivide _ a -> a
+         FloorDivide _ a -> a
          Plus _ a -> a
          Equals _ a -> a
          Lt _ a -> a
@@ -79,7 +79,7 @@ instance HasTrailingWhitespace (BinOp a) where
            BoolOr a _ -> BoolOr a ws
            Multiply a _ -> Multiply a ws
            Divide a _ -> Divide a ws
-           IntDivide a _ -> IntDivide a ws
+           FloorDivide a _ -> FloorDivide a ws
            Plus a _ -> Plus a ws
            Equals a _ -> Equals a ws
            Lt a _ -> Lt a ws
@@ -127,7 +127,7 @@ operatorTable =
   , entry Plus 20 L
   , entry Multiply 25 L
   , entry Divide 25 L
-  , entry IntDivide 25 L
+  , entry FloorDivide 25 L
   , entry Percent 25 L
   , entry Exp 30 R
   ]
@@ -154,7 +154,7 @@ sameOperator op op' =
     (Plus{}, Plus{}) -> True
     (Multiply{}, Multiply{}) -> True
     (Divide{}, Divide{}) -> True
-    (IntDivide{}, IntDivide{}) -> True
+    (FloorDivide{}, FloorDivide{}) -> True
     (Exp{}, Exp{}) -> True
     (Percent{}, Percent{}) -> True
     (BitOr{}, BitOr{}) -> True
