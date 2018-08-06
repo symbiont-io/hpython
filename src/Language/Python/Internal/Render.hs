@@ -493,6 +493,10 @@ renderDictItem (DictItem _ a b c) =
   singleton (TkColon ()) <>
   foldMap renderWhitespace b <>
   bracketTupleGenerator c
+renderDictItem (DoubleStarItem _ b c) =
+  singleton (TkDoubleStar ()) <>
+  foldMap renderWhitespace b <>
+  bracketTupleGenerator c
 
 renderIntLiteral :: IntLiteral a -> Text
 renderIntLiteral (IntLiteralDec _ n) =

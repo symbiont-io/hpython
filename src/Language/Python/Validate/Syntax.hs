@@ -219,6 +219,9 @@ validateDictItemSyntax (DictItem a b c d) =
   (\b' -> DictItem a b' c) <$>
   validateExprSyntax b <*>
   validateExprSyntax d
+validateDictItemSyntax (DoubleStarItem ann ws expr) =
+  (\expr' -> DoubleStarItem ann ws expr') <$>
+  validateExprSyntax expr
 
 validateSubscriptSyntax
   :: ( AsSyntaxError e v a

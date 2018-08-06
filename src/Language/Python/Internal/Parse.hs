@@ -562,11 +562,17 @@ orExpr ws =
               pure $ List (pyTokenAnn tk) s (Just $ (ex', cs, mws) ^. _CommaSep1')) <*>
         (snd <$> token ws (TkRightBracket()))
 
-    dictItem =
-      (\a -> DictItem (a ^. exprAnnotation) a) <$>
+    dictItem = kvItem <!> dstarItem
+
+    kvItem = (\a -> DictItem (a ^. exprAnnotation) a) <$>
       expr anySpace <*>
       (snd <$> colon anySpace) <*>
       expr anySpace
+
+    dstarItem = do
+      (a, ws) <- token anySpace (TkDoubleStar ())
+      e <- expr anySpace
+      pure $ DoubleStarItem (pyTokenAnn a) ws e
 
     dictOrSet = do
       (a, ws1) <- token anySpace (TkLeftBrace ())

@@ -233,7 +233,12 @@ data DictItem (v :: [*]) a
   , _dictItemKey        :: Expr v a
   , _dictItemWhitespace :: [Whitespace]
   , _dictItemvalue      :: Expr v a
-  } deriving (Eq, Show, Functor, Foldable, Traversable)
+  } | DoubleStarItem
+  { _dictItemAnn        :: a
+  , _dictItemWhitespace :: [Whitespace]
+  , _dictItemvalue      :: Expr v a
+  }deriving (Eq, Show,
+   Functor, Foldable, Traversable)
 
 instance HasTrailingWhitespace (DictItem v a) where
   trailingWhitespace =
