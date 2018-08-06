@@ -854,7 +854,13 @@ commaSep1' ws pa =
 
 
 typeAnnotation :: Parser ann (Type '[] ann)
-typeAnnotation =
+typeAnnotation = refType <!> noneType
+
+noneType :: Parser ann (Type '[] ann)
+noneType = token anySpace (TkNone ()) >>=  pure . NoneType . pyTokenAnn . fst
+
+refType :: Parser ann (Type '[] ann)
+refType =
   do
     a <- reference
     b <- optional ((,,) <$> token anySpace (TkLeftBracket ()) <*> commaSep1 anySpace typeAnnotation <*> token anySpace (TkRightBracket ()))

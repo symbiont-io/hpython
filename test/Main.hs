@@ -197,6 +197,9 @@ main = do
   check $ statement_parse_print "@decorate\ndef fun(a:str) ->  int:\n    return 1"
   check $ statement_parse_print "@decorate\ndef fun(a:foo.str) ->  bar.int:\n    return 1"
   check $ statement_parse_print "def fun(a,b):\n    return a // b"
+  check $ statement_parse_print "loan = cast(Loan , {'loanId': id, **loanCreation })"
+  check $ statement_parse_print "def do_create_loan(loan :Loan) -> None:\n    pass"
+  check $ statement_parse_print "def do_create_loan(loan :None) -> int:\n    return 1"
   checkParallel lexerParserTests
   let file = "hedgehog-test.py"
   check . withTests 200 $ syntax_expr file

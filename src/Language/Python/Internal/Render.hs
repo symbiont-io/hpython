@@ -1019,6 +1019,7 @@ renderBinOp (ShiftLeft _ ws) = TkShiftLeft () `cons` foldMap renderWhitespace ws
 renderBinOp (ShiftRight _ ws) = TkShiftRight () `cons` foldMap renderWhitespace ws
 
 renderType :: Type v a -> RenderOutput
+renderType (NoneType _ )      = singleton (TkNone ())
 renderType (Type _ name Nothing) =
   renderReference name
 renderType (Type _ name (Just cs1)) =

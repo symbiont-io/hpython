@@ -47,8 +47,8 @@ class HasExprs s where
 
 data Reference (v :: [*]) a =
     Id (Ident v a)
-  | Chain (Ident v a) (Reference v a)
-  deriving (Eq, Show, Functor, Foldable, Traversable)
+  | Chain (Ident v a) (Reference v a) 
+   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 referenceAnnotation :: Reference v a -> a
 referenceAnnotation (Id idt)      = _identAnnotation idt
@@ -59,7 +59,7 @@ data Type (v :: [*]) a
   {  _typeAnn    :: a
   ,  _typeName   :: Reference v a
   ,  _typeParams :: Maybe (CommaSep1 (Type v a))
-  }
+  } | NoneType a
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 
