@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-unused-imports #-}
 import Control.Monad (when, (<=<))
 import Data.Monoid ((<>))
 import Data.Text.Lazy (unpack)
