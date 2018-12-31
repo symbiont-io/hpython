@@ -106,7 +106,7 @@ executable roundtrip
 executable depgraph
   main-is:             depgraph.hs
   hs-source-dirs:      example
-  build-depends:       base >=4.9 && <4.11, lens, hpython, filepath, text, trifecta
+  build-depends:       base >=4.9 && <4.11, containers, lens, hpython, filepath, text, trifecta
   default-language:    Haskell2010
   ghc-options:         -Wall
                        -Werror
