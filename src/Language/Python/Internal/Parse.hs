@@ -1,28 +1,29 @@
-{-# language DataKinds #-}
-{-# language FlexibleContexts #-}
-{-# language GeneralizedNewtypeDeriving #-}
-{-# language TemplateHaskell #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TemplateHaskell            #-}
 module Language.Python.Internal.Parse where
 
 import Control.Applicative (liftA2)
 import Control.Lens.Fold (foldOf, folded)
-import Control.Lens.Getter ((^.), use)
+import Control.Lens.Getter (use, (^.))
 import Control.Lens.Setter (assign)
 import Control.Lens.TH (makeLenses)
 import Control.Monad (unless)
-import Control.Monad.Except (ExceptT(..), runExceptT, throwError, catchError)
-import Control.Monad.State
-  (MonadState, StateT(..), get, put, evalStateT, runStateT)
-import Control.Monad.Writer.Strict (MonadWriter, Writer, runWriter, writer, tell)
+import Control.Monad.Except (ExceptT (..), catchError, runExceptT, throwError)
+import Control.Monad.State (MonadState, StateT (..), evalStateT, get, put,
+                            runStateT)
+import Control.Monad.Writer.Strict (MonadWriter, Writer, runWriter, tell,
+                                    writer)
 import Data.Bifunctor (first)
 import Data.Foldable (toList)
 import Data.Function ((&))
 import Data.Functor (($>))
-import Data.Functor.Alt (Alt((<!>)), many, some, optional)
+import Data.Functor.Alt (Alt ((<!>)), many, optional, some)
 import Data.Functor.Classes (liftEq)
 import Data.List (foldl')
-import Data.List.NonEmpty (NonEmpty(..))
-import Data.Sequence (viewl, ViewL(..))
+import Data.List.NonEmpty (NonEmpty (..))
+import Data.Sequence (ViewL (..), viewl)
 
 import qualified Data.List.NonEmpty as NonEmpty
 
@@ -62,7 +63,7 @@ instance Monoid Consumed where
 data ParseState ann
   = ParserState
   { _parseLocation :: ann
-  , _parseContext :: [[Either (Nested ann) (Line ann)]]
+  , _parseContext  :: [[Either (Nested ann) (Line ann)]]
   }
 makeLenses ''ParseState
 
@@ -151,7 +152,7 @@ eof = Parser $ do
     [] -> tell $ Consumed True
     x : xs ->
       case x of
-        [] -> assign parseContext xs *> unParser eof
+        []     -> assign parseContext xs *> unParser eof
         ls : _ -> throwError . ExpectedEndOfInput $ firstLine ls
 
 indent :: Parser ann ()
@@ -175,7 +176,7 @@ dedent = Parser $ do
     [] -> pure ()
     current : rest ->
       case current of
-        [] -> assign parseContext rest *> tell (Consumed True)
+        []     -> assign parseContext rest *> tell (Consumed True)
         ls : _ -> throwError . ExpectedEndOfBlock $ firstLine ls
 
 consumed :: (MonadState (ParseState ann) m, MonadWriter Consumed m) => ann -> m ()
@@ -541,7 +542,7 @@ orExpr ws =
     parens = do
       (tk, s) <- token anySpace $ TkLeftParen ()
       ex <- yieldExpr anySpace <!> exprListComp anySpace
-      Parens (pyTokenAnn tk) s ex <$> 
+      Parens (pyTokenAnn tk) s ex <$>
         (snd <$> token ws (TkRightParen ()))
 
     list = do
@@ -574,12 +575,21 @@ orExpr ws =
       e <- expr anySpace
       pure $ DoubleStarItem (pyTokenAnn a) ws e
 
+    firstDstarItem = do
+      e <- dstarItem
+      let ann = _dictItemAnn e
+      pure $ Dict ann [] (listToCommaSep1' [e]) []
+
     dictOrSet = do
       (a, ws1) <- token anySpace (TkLeftBrace ())
       let ann = pyTokenAnn a
-      maybeExpr <- optional $ expr anySpace
+      maybeExpr <- optional $ expr anySpace <!> firstDstarItem
       (case maybeExpr of
          Nothing -> pure $ Dict ann ws1 Nothing
+         Just (Dict _ _ (Just (CommaSepOne1' firstItem _)) _) ->
+           (\ (rest, final) ->
+               Dict ann ws1 (Just $ (firstItem, rest, final) ^. _CommaSep1')) <$>
+             commaSepRest dictItem
          Just ex -> do
            maybeColon <- optional $ snd <$> token anySpace (TkColon ())
            case maybeColon of
@@ -871,7 +881,7 @@ reference = do
   i <- identifier anySpace
   r <- optional (tokenEq (TkDot ()) *> reference)
   case r of
-    Just ref -> pure $ Chain i ref 
+    Just ref -> pure $ Chain i ref
     Nothing  -> pure $ Id i
 
 
@@ -939,7 +949,7 @@ decoratorValue = do
         ids
   pure $
     case args of
-      Nothing -> derefs
+      Nothing        -> derefs
       Just (l, x, r) -> Call (derefs ^. exprAnnotation) derefs l x r
 
 decorator :: Parser ann (Decorator '[] ann)
@@ -1017,7 +1027,7 @@ compoundStatement =
     trySt =
       (\i (tk, s) a d ->
          case d of
-           Left (e, f, g) -> TryFinally i (pyTokenAnn tk) s a e f g
+           Left (e, f, g)  -> TryFinally i (pyTokenAnn tk) s a e f g
            Right (e, f, g) -> TryExcept i (pyTokenAnn tk) s a e f g) <$>
       indents <*>
       token space (TkTry ()) <*>
@@ -1074,7 +1084,7 @@ compoundStatement =
          (snd <$> token space (TkElse ())) <*>
          suite)
 
-    maybeTypeAnn = optional ((,) <$> 
+    maybeTypeAnn = optional ((,) <$>
         (snd <$> token space (TkArrow())) <*>
         typeAnnotation)
 

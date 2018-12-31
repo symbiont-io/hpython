@@ -13,23 +13,23 @@ import Language.Python.Validate.Indentation.Error
 import Language.Python.Validate.Syntax
 import Language.Python.Validate.Syntax.Error
 
+import Helpers (doToPython)
 import LexerParser
 import Scope
-import Helpers (doToPython)
 
-import qualified Generators.General as General
 import qualified Generators.Correct as Correct
+import qualified Generators.General as General
 
 import Control.Lens
 import Control.Monad.IO.Class
 import Control.Monad.State
 import Data.Functor
 import Data.List
-import Data.Text.Lazy(pack)
+import Data.Text.Lazy (pack)
+import qualified Data.Text.Lazy as Lazy
 import Data.Validate
 import System.Exit
 import System.Process
-import qualified Data.Text.Lazy as Lazy
 
 import Hedgehog
 import qualified Hedgehog.Gen as Gen
@@ -142,7 +142,7 @@ correct_syntax_expr path =
       Success res ->
         case validateExprSyntax' res of
           Failure errs' -> annotateShow errs' *> failure
-          Success res' -> runPython3 path True (Lazy.unpack $ showExpr ex)
+          Success res'  -> runPython3 path True (Lazy.unpack $ showExpr ex)
 
 correct_syntax_statement :: FilePath -> Property
 correct_syntax_statement path =
@@ -192,21 +192,23 @@ statement_parse_print str = do
     showStatement (py $> ()) === pack str
 
 main = do
-  check $ statement_parse_print "def fun(a:int):\n    return 1"
-  check $ statement_parse_print "def fun(a:str) ->  int:\n    return 1"
-  check $ statement_parse_print "@decorate\ndef fun(a:str) ->  int:\n    return 1"
-  check $ statement_parse_print "@decorate\ndef fun(a:foo.str) ->  bar.int:\n    return 1"
-  check $ statement_parse_print "def fun(a,b):\n    return a // b"
-  check $ statement_parse_print "loan = cast(Loan , {'loanId': id, **loanCreation })"
-  check $ statement_parse_print "def do_create_loan(loan :Loan) -> None:\n    pass"
-  check $ statement_parse_print "def do_create_loan(loan :None) -> int:\n    return 1"
+  check . withTests 1 $ statement_parse_print "def fun(a:int):\n    return 1"
+  check . withTests 1 $ statement_parse_print "def fun(a:str) ->  int:\n    return 1"
+  check . withTests 1 $ statement_parse_print "@decorate\ndef fun(a:str) ->  int:\n    return 1"
+  check . withTests 1 $ statement_parse_print "@decorate\ndef fun(a:foo.str) ->  bar.int:\n    return 1"
+  check . withTests 1 $ statement_parse_print "def fun(a,b):\n    return a // b"
+  check . withTests 1 $ statement_parse_print "loan = cast(Loan , {'loanId': id, **loanCreation })"
+  check . withTests 1 $ statement_parse_print "loan = cast(Loan , { **loanCreation, 'loanId': id })"
+  check . withTests 1 $ statement_parse_print "loan = cast(Loan , {})"
+  check . withTests 1 $ statement_parse_print "def do_create_loan(loan :Loan) -> None:\n    pass"
+  check . withTests 1 $ statement_parse_print "def do_create_loan(loan :None) -> int:\n    return 1"
   checkParallel lexerParserTests
-  let file = "hedgehog-test.py"
-  check . withTests 200 $ syntax_expr file
-  check . withTests 200 $ syntax_statement file
-  check . withTests 200 $ syntax_module file
-  check . withTests 200 $ correct_syntax_expr file
-  check . withTests 200 $ correct_syntax_statement file
-  check expr_printparseprint_print
-  check . withShrinks 2000 $ statement_printparseprint_print
+  -- let file = "hedgehog-test.py"
+  -- check . withTests 200 $ syntax_expr file
+  -- check . withTests 200 $ syntax_statement file
+  -- check . withTests 200 $ syntax_module file
+  -- check . withTests 200 $ correct_syntax_expr file
+  -- check . withTests 200 $ correct_syntax_statement file
+  -- check expr_printparseprint_print
+  -- check . withShrinks 2000 $ statement_printparseprint_print
   checkParallel scopeTests
