@@ -1,8 +1,6 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE OverloadedStrings #-}
-
-import Control.Monad ((<=<))
-import Data.Foldable (traverse_)
+import Control.Monad (when, (<=<))
 import Data.Monoid ((<>))
 import Data.Text.Lazy (unpack)
 import Language.Python.Internal.Lexer (indentation, logicalLines, nested,
@@ -12,6 +10,7 @@ import Language.Python.Internal.Render (renderModule, showRenderOutput)
 import Language.Python.Internal.Syntax.Module (Module)
 import Language.Python.Internal.Token ()
 import System.Environment (getArgs)
+import System.Exit
 import qualified Text.Trifecta as Trifecta
 
 tokens str = do
@@ -45,10 +44,12 @@ toPython =
 main :: IO ()
 main = do
   args <- getArgs
-  traverse_ readPy args
+  exits <- traverse readPy args
+  when (any (/= ExitSuccess) exits) $ exitWith (ExitFailure 1)
 
-readPy :: FilePath -> IO ()
+readPy :: FilePath -> IO ExitCode
 readPy f = do
   code <- readFile f
   let res = toPython code
-  putStrLn $ either id (unpack . showRenderOutput . renderModule) res
+  either (putStrLn . ((f <> " : ") <>))  (const $ pure ()) res
+  return $ either (const $ ExitFailure 1) (const ExitSuccess) res
