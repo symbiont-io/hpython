@@ -74,20 +74,32 @@ main = do
   putStrLn $ displayGraph $ filter unwantedCalls $ calls
 
 unwantedCalls :: ( Node, Node) -> Bool
-unwantedCalls (s,t) = s `notElem` unwanted && t `notElem` unwanted
+unwantedCalls (s,t) = isContractCall s && isContractCall t
   where
-    unwanted = [ aCast, aJob_Start]
+    isContractCall n = _namespace n `elem` contracts
+    contracts = [ "amortization"
+                , "borrowers"
+                , "date"
+                , "documents"
+                , "escrow"
+                , "investors"
+                , "loans"
+                , "loans_events"
+                , "loans_history"
+                , "loans_schemas"
+                , "payments"
+                , "rational"
+                , "servicing"
+                , "todos"
+                , "transfer"
+                , "workflow"
+                ]
+
 
 data Node = Node { _namespace :: String
                  , _function  :: String
                  }
   deriving (Eq, Ord, Show)
-
-aCast :: Node
-aCast = Node "cvm" "cast"
-
-aJob_Start :: Node
-aJob_Start = Node "cvm" "job_start"
 
 display :: Node -> String
 display (Node ns fn) = ns <> "." <> fn
@@ -95,10 +107,27 @@ display (Node ns fn) = ns <> "." <> fn
 displayGraph :: [(Node, Node)]
              -> String
 displayGraph graph =
-  unlines $ hdr <> (fmap mkEdges $ List.nub $ List.sort $ graph) <> ftr
+  unlines $ hdr <> clusters <> links <> ftr
   where
+    clusters = concatMap mkCluster $
+               zip [1 :: Int ..] $
+               List.groupBy ((==) `on` _namespace) $
+               List.sortBy (compare `on` _namespace) $
+               uncurry (<>) $
+               unzip graph
+    mkCluster (num, nodes) = [ "  subgraph cluster_" <> show num <> " {"
+                             , "    label=\"" <> _namespace (head nodes) <> "\";" ] <>
+                             fmap ((\ n -> "    " <> bracketed n <> ";") . display) functions <>
+                             [ "  };" ]
+      where
+        functions = List.nub $ List.sort nodes
+    bracketed s = "\"" <> s <> "\""
+    links = fmap mkEdges $ List.nub $ List.sort $ graph
     mkEdges (s, t) = "  \"" <> display s <> "\" -> \"" <> display t <> "\";"
-    hdr = [ "digraph G {" ]
+    hdr = [ "digraph G {"
+          , "concentrate = true;"
+          , "rankdir = LR;"
+          ]
     ftr = [ "}" ]
 
 buildDependencyGraph :: FilePath -> Module '[] Trifecta.Caret -> [ (Node, Node) ]
@@ -128,9 +157,9 @@ allCallExprs ns (_identValue -> caller) body =
    extractNode e = Node "<?>" (unpack $ showExpr e)
 
 allDefinitions :: [ Statement '[] Trifecta.Caret ] -> [ (Ident '[] Trifecta.Caret, Suite '[] Trifecta.Caret) ]
-allDefinitions = concatMap (toListOf (_Fundef . to _getFun))
+allDefinitions = concatMap (toListOf (_Fundef . to makeFun))
   where
-    _getFun (_,_,_,_,i,_,_,_,_,s) = (i,s)
+     makeFun (_,_,_,_,i,_,_,_,_,s) = (i,s)
 
 allExpressions :: Module '[] Trifecta.Caret -> [ Statement '[] Trifecta.Caret ]
 allExpressions = toListOf _Statements
