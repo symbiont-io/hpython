@@ -1,13 +1,22 @@
-{-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE OverloadedLists   #-}
-{-# LANGUAGE OverloadedStrings #-}
-
+{-# language OverloadedStrings #-}
+{-# language FlexibleContexts #-}
 module Programs where
 
-import           Control.Lens.Getter             ((^.))
-import           Control.Lens.Iso                (from)
-import           Language.Python.Internal.Syntax
-import           Language.Python.Syntax
+import Control.Lens.Getter ((^.))
+import Control.Lens.Iso (from)
+import Control.Lens.Review ((#))
+import Data.Function ((&))
+import Data.List.NonEmpty (NonEmpty(..))
+
+import Language.Python.DSL
+import Language.Python.Optics
+
+import Language.Python.Syntax.Module (Module(..))
+import Language.Python.Syntax.CommaSep (Comma(..), CommaSep(..), CommaSep1'(..))
+import Language.Python.Syntax.Expr (Arg(..), Expr(..), Param(..))
+import Language.Python.Syntax.Punctuation (Colon(..))
+import Language.Python.Syntax.Statement (Block(..), CompoundStatement(..), SmallStatement(..), SimpleStatement(..), Statement(..), Suite(..))
+import Language.Python.Syntax.Whitespace (Indents(..), Newline(..), Whitespace(..), indentWhitespaces)
 
 -- |
 -- @
@@ -16,40 +25,45 @@ import           Language.Python.Syntax
 --   return to
 -- @
 --
--- Written without the DSL
+-- Written without the DSL (not recommended!)
+append_to :: Raw Statement
 append_to =
   CompoundStatement $
-  Fundef  
-    ()
-    []
-    (Indents [] ())
-    [Space]
+  Fundef () [] (Indents [] ())
+    Nothing
+    (Space :| [])
     "append_to"
     []
-    (CommaSepMany (PositionalParam () "element" Nothing) [Space] $
-     CommaSepOne (KeywordParam () "to" Nothing [] (List () [] Nothing [])))
-    [] Nothing
-    (SuiteMany () [] (LF Nothing) $
-     Block
+    ( CommaSepMany (PositionalParam () "element" Nothing) (Comma [Space]) $
+      CommaSepOne (KeywordParam () "to" Nothing [] (List () [] Nothing []))
+    )
+    []
+    Nothing
+    (SuiteMany () (Colon []) Nothing LF $
+     Block []
+     ( SmallStatement
+         (Indents [replicate 4 Space ^. from indentWhitespaces] ())
+         (MkSmallStatement
+          (Expr () $
+           Call ()
+             (Deref () (Ident "to") [] "append")
+             []
+             (Just $ CommaSepOne1' (PositionalArg () (Ident "element")) Nothing)
+             [])
+          []
+          Nothing
+          Nothing
+          (Just LF))
+     )
      [ Right $
-       SmallStatements
-         (Indents [replicate 4 Space ^. from indentWhitespaces] ())
-         (Expr () $
-          Call ()
-            (Deref () (Ident () "to") [] "append")
+         SmallStatement
+           (Indents [replicate 4 Space ^. from indentWhitespaces] ())
+           (MkSmallStatement
+            (Return () [Space] (Just $ Ident "to"))
             []
-            (Just $ CommaSepOne1' (PositionalArg () (Ident () "element")) Nothing)
-            [])
-         []
-         Nothing
-         (Right $ LF Nothing)
-     , Right $
-       SmallStatements
-         (Indents [replicate 4 Space ^. from indentWhitespaces] ())
-         (Return () [Space] (Just $ Ident () "to"))
-         []
-         Nothing
-         (Right $ LF Nothing)
+            Nothing
+            Nothing
+            (Just LF))
      ])
 
 -- |
@@ -60,11 +74,12 @@ append_to =
 -- @
 --
 -- Written with the DSL
+append_to' :: Raw Fundef
 append_to' =
-  def_
-    "append_to"
-    [p_ "element", k_ "to" (list_ [])]
-    [expr_ $ call_ ("to" /> "append") ["element"], return_ "to"]
+  def_ "append_to" [ p_ "element", k_ "to" (list_ []) ]
+    [ line_ $ call_ ("to" /> "append") [ "element" ]
+    , line_ $ return_ "to"
+    ]
 
 -- |
 -- @
@@ -76,27 +91,27 @@ append_to' =
 --       go(n-1, n*acc)
 --   return go(n, 1)
 -- @
+fact_tr :: Raw Fundef
 fact_tr =
-  def_
-    "fact"
-    [p_ "n"]
-    [ def_
-        "go"
-        [p_ "n", p_ "acc"]
-        [ ifElse_
-            ("n" .== 0)
-            [return_ "acc"]
-            [return_ $ call_ "go" [p_ $ "n" .- 1, p_ $ "n" .* "acc"]]
-        ]
-    , return_ $ call_ "go" [p_ "n", p_ 1]
-    ]
+  def_ "fact" [p_ "n"]
+  [ line_ $
+    def_ "go" [p_ "n", p_ "acc"]
+      [ line_ $
+        if_ ("n" .== 0)
+          [line_ $ return_ (var_ "acc")] &
+        else_
+          [line_ . return_ $ call_ "go" [p_ $ "n" .- 1, p_ $ "n" .* "acc"]]
+      ]
+  , line_ . return_ $ call_ "go" [p_ "n", p_ 1]
+  ]
 
 -- |
 -- @
 -- def spin():
 --   spin()
 -- @
-spin = def_ "spin" [] [expr_ $ call_ "spin" []]
+spin :: Raw Fundef
+spin = def_ "spin" [] [line_ $ call_ "spin" []]
 
 -- |
 -- @
@@ -104,21 +119,98 @@ spin = def_ "spin" [] [expr_ $ call_ "spin" []]
 --   print("yes")
 --   yes()
 -- @
+yes :: Raw Fundef
 yes =
-  def_
-    "yes"
-    []
-    [expr_ $ call_ "print" [p_ $ str_ "yes"], expr_ $ call_ "yes" []]
+  def_ "yes" []
+  [ line_ $ call_ "print" [p_ $ str_ "yes"]
+  , line_ $ call_ "yes" []
+  ]
 
+counter :: Raw ClassDef
+counter =
+  class_ "Counter" []
+  [ line_ $
+    def_ "__init__" ["self"]
+      [line_ ("self" /> "x" .= 0)]
+
+  , blank_
+
+  , line_ $
+    def_ "incr" ["self"]
+      [line_ ("self" /> "x" .+= 1)]
+
+  , blank_
+
+  , line_ $
+    def_ "reset" ["self"]
+      [line_ ("self" /> "x" .= 0)]
+
+  , blank_
+
+  , line_ $
+    def_ "get" ["self"]
+      [line_ $ return_ ("self" /> "x")]
+  ]
+
+exceptions :: Raw Statement
+exceptions =
+  _Fundef #
+  def_ "exceptions" []
+  [ line_ $
+    tryE_ [line_ pass_] &
+      except_ [line_ pass_]
+  , blank_
+
+  , line_ $
+    tryE_ [line_ pass_] &
+      exceptAs_ (var_ "a" `as_` id_ "b") [line_ pass_]
+  , blank_
+
+  , line_ $
+    tryE_ [line_ pass_] &
+      exceptAs_ (var_ "a" `as_` id_ "b") [line_ pass_] &
+      finally_ [line_ pass_]
+  , blank_
+
+  , line_ $
+    tryE_ [line_ pass_] &
+      exceptAs_ (var_ "a" `as_` id_ "b") [line_ pass_] &
+      else_ [line_ pass_] &
+      finally_ [line_ pass_]
+  , blank_
+
+  , line_ $ tryF_ [line_ pass_] [line_ pass_]
+  , blank_
+
+  , line_ $ tryF_ [line_ pass_] & finally_ [line_ pass_]
+  , blank_
+
+  , line_ $
+    tryF_ [line_ pass_] [line_ pass_] &
+      exceptAs_ (var_ "a" `as_` id_ "b") [line_ pass_] &
+      else_ [line_ pass_]
+  ]
+
+everything :: Raw Module
 everything =
-  Module
-    [ Right append_to
-    , Left (Indents [] (), Nothing, Just $ LF Nothing)
-    , Right append_to'
-    , Left (Indents [] (), Nothing, Just $ LF Nothing)
-    , Right fact_tr
-    , Left (Indents [] (), Nothing, Just $ LF Nothing)
-    , Right spin
-    , Left (Indents [] (), Nothing, Just $ LF Nothing)
-    , Right yes
-    ]
+  module_
+  [ line_ append_to
+  , blank_
+
+  , line_ append_to'
+  , blank_
+
+  , line_ fact_tr
+  , blank_
+
+  , line_ spin
+  , blank_
+
+  , line_ yes
+  , blank_
+
+  , line_ counter
+  , blank_
+
+  , line_ exceptions
+  ]

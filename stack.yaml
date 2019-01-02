@@ -1,10 +1,6 @@
 resolver: lts-11.18
 packages:
 - .
-- location: 
-    git: 'https://github.com/symbiont-io/digit' 
-    commit: 972716bc24284cdaae69f37409b05c36b0643108
-  extra-dep: true
 
 extra-deps:
 - type-level-sets-0.8.7.0
@@ -24,4 +20,5 @@ extra-deps:
 - papa-x-0.3.1
 - papa-x-export-0.3.1
 - papa-x-implement-0.3.1
-
+- digit-0.7
+- parsers-megaparsec-0.1.0.1

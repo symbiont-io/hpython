@@ -1,58 +1,150 @@
+{-# language DataKinds #-}
+{-# language RankNTypes #-}
+{-# language ScopedTypeVariables #-}
 module Helpers where
-
-import Control.Monad ((<=<))
-import qualified Text.Trifecta as Trifecta
 
 import Hedgehog
 
+import Control.Lens.Fold ((^?), folded)
+import Control.Monad (void)
+import Data.List.NonEmpty (NonEmpty(..))
+import Data.Semigroup (Semigroup)
+import Data.Text (Text)
+import Data.Validation (Validation(..), _Failure)
+import Text.Megaparsec.Pos (SourcePos(..), mkPos)
+
 import Language.Python.Internal.Lexer
-  (LogicalLine, IndentedLine, Nested, tokenize, logicalLines, indentation, nested)
-import Language.Python.Internal.Parse (Parser, runParser)
+  (SrcInfo, insertTabs, tokenize
+  )
 import Language.Python.Internal.Token (PyToken)
+import Language.Python.Parse (Parser)
+import Language.Python.Parse.Error (ParseError, ErrorItem(..), _ParseError)
+import Language.Python.Internal.Parse (runParser)
+import Language.Python.Syntax.Expr (Expr)
+import Language.Python.Syntax.Module (Module)
+import Language.Python.Syntax.Statement (Statement)
+import Language.Python.Validate
 
-doTokenize :: Monad m => String -> PropertyT m [PyToken Trifecta.Caret]
-doTokenize str = do
-  let res = tokenize str
-  case res of
-    Trifecta.Failure err -> do
-      annotateShow err
-      failure
-    Trifecta.Success a -> pure a
+doTokenize :: Monad m => Text -> PropertyT m [PyToken SrcInfo]
+doTokenize input =
+  case tokenize "test" input of
+    Left err -> annotateShow (err :: ParseError SrcInfo) *> failure
+    Right a -> pure a
 
-doIndentation :: (Show a, Monad m) => [LogicalLine a] -> PropertyT m [IndentedLine a]
-doIndentation lls = do
-  let res = indentation lls
+doTabs
+  :: forall ann m
+   . (Semigroup ann, Show ann, Monad m)
+  => ann
+  -> [PyToken ann]
+  -> PropertyT m [PyToken ann]
+doTabs ann input =
+  case insertTabs ann input of
+    Left err -> annotateShow (err :: ParseError ann) *> failure
+    Right a -> pure a
+
+doParse :: Monad m => Parser a -> [PyToken SrcInfo] -> PropertyT m a
+doParse pa input = do
+  let res = runParser "test" pa input
   case res of
     Left err -> do
-      annotateShow err
+      annotateShow (err :: ParseError SrcInfo)
       failure
     Right a -> pure a
 
-doNested :: Monad m => [IndentedLine a] -> PropertyT m (Nested a)
-doNested ils = do
-  let res = nested ils
+syntaxValidateModule
+  :: Module '[] ()
+  -> PropertyT IO
+       (Validation
+          (NonEmpty (SyntaxError ()))
+          (Module '[Syntax, Indentation] ()))
+syntaxValidateModule x =
+  case runValidateIndentation $ validateModuleIndentation x of
+    Failure errs -> do
+      annotateShow (errs :: NonEmpty (IndentationError ()))
+      failure
+    Success a ->
+      pure $ runValidateSyntax (validateModuleSyntax a)
+
+syntaxValidateStatement
+  :: Statement '[] ()
+  -> PropertyT IO
+       (Validation
+          (NonEmpty (SyntaxError ()))
+          (Statement '[Syntax, Indentation] ()))
+syntaxValidateStatement x =
+  case runValidateIndentation $ validateStatementIndentation x of
+    Failure errs -> do
+      annotateShow (errs :: NonEmpty (IndentationError ()))
+      failure
+    Success a ->
+      pure $ runValidateSyntax (validateStatementSyntax a)
+
+syntaxValidateExpr
+  :: Expr '[] ()
+  -> PropertyT IO
+       (Validation
+          (NonEmpty (SyntaxError ()))
+          (Expr '[Syntax, Indentation] ()))
+syntaxValidateExpr x =
+  case runValidateIndentation $ validateExprIndentation x of
+    Failure errs -> do
+      annotateShow (errs :: NonEmpty (IndentationError ()))
+      failure
+    Success a ->
+      pure $ runValidateSyntax (validateExprSyntax a)
+
+shouldBeFailure :: MonadTest m => Validation e a -> m ()
+shouldBeFailure res =
   case res of
-    Left err -> do
+    Success{} -> failure
+    Failure{} -> success
+
+shouldBeSuccess :: (MonadTest m, Show e) => Validation e a -> m a
+shouldBeSuccess res =
+  case res of
+    Success a -> pure a
+    Failure err -> do
       annotateShow err
       failure
-    Right a -> pure a
 
-doParse :: (Show ann, Monad m) => ann -> Parser ann a -> Nested ann -> PropertyT m a
-doParse initial pa input = do
-  let res = runParser initial pa input
-  case res of
-    Left err -> do
-      annotateShow err
+shouldBeParseSuccess
+  :: MonadTest m
+  => (FilePath -> Text -> Validation (NonEmpty (ParseError SrcInfo)) a)
+  -> Text -> m a
+shouldBeParseSuccess p = shouldBeSuccess . p "test"
+
+shouldBeParseFailure
+  :: MonadTest m
+  => (FilePath -> Text -> Validation (NonEmpty (ParseError SrcInfo)) a)
+  -> Text -> m ()
+shouldBeParseFailure p = shouldBeFailure . p "test"
+
+shouldBeParseError
+  :: (MonadTest m, Show e, Show a)
+  => Int
+  -> Int
+  -> PyToken ()
+  -> Validation (NonEmpty (ParseError e)) a
+  -> m ()
+shouldBeParseError line col tk res =
+  case res ^? _Failure.folded._ParseError of
+    Just (srcPos :| _, Just (Tokens (errorItem :| [])), _) -> do
+      sourceLine srcPos === mkPos line
+      sourceColumn srcPos === mkPos col
+
+      void errorItem === tk
+    _ -> do
+      annotateShow res
       failure
-    Right a -> pure a
 
-doParse' :: Monad m => Parser Trifecta.Caret a -> Nested Trifecta.Caret -> PropertyT m a
-doParse' = doParse (Trifecta.Caret mempty mempty)
-
-doToPython :: Monad m => Parser Trifecta.Caret a -> String -> PropertyT m a
-doToPython pa =
-  doParse (Trifecta.Caret mempty mempty) pa <=<
-  doNested <=<
-  doIndentation <=<
-  pure . logicalLines <=<
-  doTokenize
+shouldBeSyntaxError
+  :: (MonadTest m, Show a)
+  => SyntaxError ()
+  -> Validation (NonEmpty (SyntaxError ())) a
+  -> m ()
+shouldBeSyntaxError err res =
+  case res ^? _Failure.folded of
+    Just err' -> err === err'
+    _ -> do
+      annotateShow res
+      failure

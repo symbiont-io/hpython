@@ -2,45 +2,25 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-unused-imports #-}
 import Control.Monad (when, (<=<))
+import Data.Bifunctor (bimap)
+import Data.List.NonEmpty (NonEmpty)
 import Data.Monoid ((<>))
+import Data.Text (Text, pack)
 import Data.Text.Lazy (unpack)
-import Language.Python.Internal.Lexer (indentation, logicalLines, nested,
-                                       tokenize)
-import Language.Python.Internal.Parse (module_, runParser)
+import Data.Validation (Validation, toEither)
+import Language.Python.Internal.Lexer (SrcInfo)
 import Language.Python.Internal.Render (renderModule, showRenderOutput)
-import Language.Python.Internal.Syntax.Module (Module)
 import Language.Python.Internal.Token ()
+import Language.Python.Parse (ParseError, parseModule)
+import Language.Python.Syntax (Module)
 import System.Environment (getArgs)
 import System.Exit
-import qualified Text.Trifecta as Trifecta
 
-tokens str = do
-  let res = tokenize str
-  case res of
-    Trifecta.Failure err -> Left $ "error tokenizing " <> show err
-    Trifecta.Success a   -> pure a
-
-indents lls = do
-  let res = indentation lls
-  case res of
-    Left err -> Left $ "error checking indentation " <> show err
-    Right a  -> pure a
-
-nesteds ils = do
-  let res = nested ils
-  case res of
-    Left err -> Left $ "error nested " <> show err
-    Right a  -> pure a
-
-parse pa input = do
-  let res = runParser (Trifecta.Caret mempty mempty) pa input
-  case res of
-    Left err -> Left $ "error parsing " <> show err
-    Right a  -> pure a
-
-toPython :: String -> Either String (Module '[] Trifecta.Caret)
-toPython =
-  parse module_ <=< nesteds <=< indents <=< pure . logicalLines <=< tokens
+toPython :: String -> String -> Either String (Module '[] SrcInfo)
+toPython fp =  bimap show id . toEither . parseModule' fp . pack
+  where
+    parseModule' :: String -> Text -> Validation (NonEmpty (ParseError SrcInfo)) (Module '[] SrcInfo)
+    parseModule' = parseModule
 
 main :: IO ()
 main = do
@@ -51,6 +31,6 @@ main = do
 readPy :: FilePath -> IO ExitCode
 readPy f = do
   code <- readFile f
-  let res = toPython code
+  let res = toPython f code
   either (putStrLn . ((f <> " : ") <>))  (const $ pure ()) res
   return $ either (const $ ExitFailure 1) (const ExitSuccess) res
