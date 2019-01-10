@@ -11,59 +11,37 @@ import Control.Monad (when, (<=<))
 import Data.Function (on)
 import Data.Graph (Graph, Vertex, edges, graphFromEdges)
 import qualified Data.List as List
+import Data.List.NonEmpty (NonEmpty)
 import Data.Monoid ((<>))
 import Data.Ord (comparing)
-import Data.Text.Lazy (unpack)
-import Language.Python.Internal.Lexer (indentation, logicalLines, nested,
-                                       tokenize)
-import Language.Python.Internal.Optics
-import Language.Python.Internal.Parse (module_, runParser)
-import Language.Python.Internal.Render (renderModule, showExpr,
-                                        showRenderOutput)
-import Language.Python.Internal.Syntax
-import Language.Python.Internal.Syntax.Module (Module)
+import Data.Text (Text, pack, unpack)
+import Data.Validation (Validation, toEither)
+import Language.Python.Internal.Lexer (SrcInfo)
+import Language.Python.Internal.Render (renderModule, showRenderOutput)
 import Language.Python.Internal.Token ()
+import Language.Python.Optics
+import Language.Python.Parse (ParseError, parseModule)
+import Language.Python.Render
+import Language.Python.Syntax
 import System.Environment (getArgs)
 import System.Exit
 import qualified System.FilePath as File
-import qualified Text.Trifecta as Trifecta
 
 
-toPython :: String -> Either String (Module '[] Trifecta.Caret)
-toPython =
-  parse module_ <=< nesteds <=< indents <=< pure . logicalLines <=< tokens
+
+toPython :: String -> String -> Either String (Module '[] SrcInfo)
+toPython fp =  bimap show id . toEither . parseModule' fp . pack
   where
-    tokens str = do
-      let res = tokenize str
-      case res of
-        Trifecta.Failure err -> Left $ "error tokenizing " <> show err
-        Trifecta.Success a   -> pure a
-
-    indents lls = do
-      let res = indentation lls
-      case res of
-        Left err -> Left $ "error checking indentation " <> show err
-        Right a  -> pure a
-
-    nesteds ils = do
-      let res = nested ils
-      case res of
-        Left err -> Left $ "error nested " <> show err
-        Right a  -> pure a
-
-    parse pa input = do
-      let res = runParser (Trifecta.Caret mempty mempty) pa input
-      case res of
-        Left err -> Left $ "error parsing " <> show err
-        Right a  -> pure a
+    parseModule' :: String -> Text -> Validation (NonEmpty (ParseError SrcInfo)) (Module '[] SrcInfo)
+    parseModule' = parseModule
 
 -- |Parse a python file into a `Module` definition
 --
 -- `fail`s if the file cannot be parsed
-readPy :: FilePath -> IO (Module '[] Trifecta.Caret)
+readPy :: FilePath -> IO (Module '[] SrcInfo)
 readPy f = do
   code <- readFile f
-  let res = toPython code
+  let res = toPython f code
   either (fail . (("error in file " <> f <> " : ") <>)) pure res
 
 main :: IO ()
@@ -130,36 +108,36 @@ displayGraph graph =
           ]
     ftr = [ "}" ]
 
-buildDependencyGraph :: FilePath -> Module '[] Trifecta.Caret -> [ (Node, Node) ]
+buildDependencyGraph :: FilePath -> Module '[] SrcInfo -> [ (Node, Node) ]
 buildDependencyGraph fp = allCalls ns . allDefinitions . allExpressions
   where
     ns = File.takeBaseName fp
 
 allCalls :: String
-         -> [(Ident '[] Trifecta.Caret,
-               Suite '[] Trifecta.Caret)]
+         -> [(Ident '[] SrcInfo,
+               Suite '[] SrcInfo)]
          -> [(Node, Node)]
 allCalls ns = concatMap (uncurry $ allCallExprs ns)
 
 allCallExprs :: String
-             -> Ident '[] Trifecta.Caret
-             -> Suite '[] Trifecta.Caret
+             -> Ident '[] SrcInfo
+             -> Suite '[] SrcInfo
              -> [(Node, Node)]
 allCallExprs ns (_identValue -> caller) body =
- let calls = toListOf (_Exprs._Call._2) body
+ let calls = toListOf (_Exprs._Call.callArguments.folded.folded.argExpr) body
  in fmap ( \c -> (Node ns caller, extractNode c)) calls
  where
    builtins = [ "Identifier", "cast", "PostTxArgs", "ChannelName" ]
-   extractNode (Ident _ (_identValue -> called))
+   extractNode (Ident (_identValue -> called))
      | called `notElem` builtins = Node ns called
      | otherwise = Node "cvm" called
    extractNode (Deref _ l _ identifier) = Node (unpack $ showExpr l) $ _identValue identifier
    extractNode e = Node "<?>" (unpack $ showExpr e)
 
-allDefinitions :: [ Statement '[] Trifecta.Caret ] -> [ (Ident '[] Trifecta.Caret, Suite '[] Trifecta.Caret) ]
+allDefinitions :: [ Statement '[] SrcInfo ] -> [ (Ident '[] SrcInfo, Suite '[] SrcInfo) ]
 allDefinitions = concatMap (toListOf (_Fundef . to makeFun))
   where
-     makeFun (_,_,_,_,i,_,_,_,_,s) = (i,s)
-
-allExpressions :: Module '[] Trifecta.Caret -> [ Statement '[] Trifecta.Caret ]
+     makeFun (MkFundef _ _ _ _ _ i _ _ _ _ s) = (i,s)
+--(Fundef _ decos idnt asyncWs ws1 name ws2 params ws3 mty s)
+allExpressions :: Module '[] SrcInfo -> [ Statement '[] SrcInfo ]
 allExpressions = toListOf _Statements
