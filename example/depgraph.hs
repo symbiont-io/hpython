@@ -128,7 +128,7 @@ allCallExprs ns (_identValue -> caller) body =
  in fmap ( \c -> (Node ns caller, extractNode c)) calls
  where
    builtins = [ "Identifier", "cast", "PostTxArgs", "ChannelName" ]
-   extractNode (Ident (_identValue -> called))
+   extractNode (Ident _ (_identValue -> called))
      | called `notElem` builtins = Node ns called
      | otherwise = Node "cvm" called
    extractNode (Deref _ l _ identifier) = Node (unpack $ showExpr l) $ _identValue identifier
