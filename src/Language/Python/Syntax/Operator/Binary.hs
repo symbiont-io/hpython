@@ -1,11 +1,12 @@
+{-# language InstanceSigs, ScopedTypeVariables, TypeApplications #-}
 {-# language LambdaCase #-}
 {-# language MultiParamTypeClasses, FlexibleInstances #-}
-{-# language DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
+{-# language DeriveFunctor, DeriveFoldable, DeriveTraversable, DeriveGeneric #-}
 {-# language TemplateHaskell #-}
 
 {-|
 Module      : Language.Python.Syntax.Operator.Binary
-Copyright   : (C) CSIRO 2017-2018
+Copyright   : (C) CSIRO 2017-2019
 License     : BSD3
 Maintainer  : Isaac Elliott <isaace71295@gmail.com>
 Stability   : experimental
@@ -19,68 +20,73 @@ flexible than hard-coding them into the syntax tree.
 module Language.Python.Syntax.Operator.Binary where
 
 import Control.Lens.Getter ((^.))
-import Control.Lens.Lens (lens)
+import Control.Lens.Lens (Lens', lens)
 import Control.Lens.TH (makeLenses)
 import Data.Functor (($>))
+import Data.Generics.Product.Typed (typed)
 import Data.Semigroup ((<>))
+import GHC.Generics (Generic)
 
+import Language.Python.Syntax.Ann
 import Language.Python.Syntax.Whitespace
 
 -- | A Python binary operator, such as @+@, along with its trailing 'Whitespace'
---
--- The type variable allows annotations, but it can simply be made @()@ for an unannotated @BinOp@.
 data BinOp a
   -- | @a is b@
-  = Is a [Whitespace]
+  = Is (Ann a) [Whitespace]
   -- | @a is not b@
-  | IsNot a [Whitespace] [Whitespace]
+  | IsNot (Ann a) [Whitespace] [Whitespace]
   -- | @a in b@
-  | In a [Whitespace]
+  | In (Ann a) [Whitespace]
   -- | @a not in b@
-  | NotIn a [Whitespace] [Whitespace]
+  | NotIn (Ann a) [Whitespace] [Whitespace]
   -- | @a - b@
-  | Minus a [Whitespace]
+  | Minus (Ann a) [Whitespace]
   -- | @a ** b@
-  | Exp a [Whitespace]
+  | Exp (Ann a) [Whitespace]
   -- | @a and b@
-  | BoolAnd a [Whitespace]
+  | BoolAnd (Ann a) [Whitespace]
   -- | @a or b@
-  | BoolOr a [Whitespace]
+  | BoolOr (Ann a) [Whitespace]
   -- | @a == b@
-  | Equals a [Whitespace]
+  | Eq (Ann a) [Whitespace]
   -- | @a < b@
-  | Lt a [Whitespace]
+  | Lt (Ann a) [Whitespace]
   -- | @a <= b@
-  | LtEquals a [Whitespace]
+  | LtEq (Ann a) [Whitespace]
   -- | @a > b@
-  | Gt a [Whitespace]
+  | Gt (Ann a) [Whitespace]
   -- | @a >= b@
-  | GtEquals a [Whitespace]
+  | GtEq (Ann a) [Whitespace]
   -- | @a != b@
-  | NotEquals a [Whitespace]
+  | NotEq (Ann a) [Whitespace]
   -- | @a * b@
-  | Multiply a [Whitespace]
+  | Multiply (Ann a) [Whitespace]
   -- | @a / b@
-  | Divide a [Whitespace]
+  | Divide (Ann a) [Whitespace]
   -- | @a // b@
-  | FloorDivide a [Whitespace]
+  | FloorDivide (Ann a) [Whitespace]
   -- | @a % b@
-  | Percent a [Whitespace]
+  | Percent (Ann a) [Whitespace]
   -- | @a + b@
-  | Plus a [Whitespace]
+  | Plus (Ann a) [Whitespace]
   -- | @a | b@
-  | BitOr a [Whitespace]
+  | BitOr (Ann a) [Whitespace]
   -- | @a ^ b@
-  | BitXor a [Whitespace]
+  | BitXor (Ann a) [Whitespace]
   -- | @a & b@
-  | BitAnd a [Whitespace]
+  | BitAnd (Ann a) [Whitespace]
   -- | @a << b@
-  | ShiftLeft a [Whitespace]
+  | ShiftLeft (Ann a) [Whitespace]
   -- | @a >> b@
-  | ShiftRight a [Whitespace]
+  | ShiftRight (Ann a) [Whitespace]
   -- | @a @ b@
-  | At a [Whitespace]
-  deriving (Eq, Show, Functor, Foldable, Traversable)
+  | At (Ann a) [Whitespace]
+  deriving (Eq, Show, Functor, Foldable, Traversable, Generic)
+
+instance HasAnn BinOp where
+  annot :: forall a. Lens' (BinOp a) (Ann a)
+  annot = typed @(Ann a)
 
 instance HasTrailingWhitespace (BinOp a) where
   trailingWhitespace =
@@ -98,12 +104,12 @@ instance HasTrailingWhitespace (BinOp a) where
          Divide _ a -> a
          FloorDivide _ a -> a
          Plus _ a -> a
-         Equals _ a -> a
+         Eq _ a -> a
          Lt _ a -> a
-         LtEquals _ a -> a
+         LtEq _ a -> a
          Gt _ a -> a
-         GtEquals _ a -> a
-         NotEquals _ a -> a
+         GtEq _ a -> a
+         NotEq _ a -> a
          BitOr _ a -> a
          BitXor _ a -> a
          BitAnd _ a -> a
@@ -125,18 +131,18 @@ instance HasTrailingWhitespace (BinOp a) where
            Divide a _ -> Divide a ws
            FloorDivide a _ -> FloorDivide a ws
            Plus a _ -> Plus a ws
-           Equals a _ -> Equals a ws
+           Eq a _ -> Eq a ws
            Lt a _ -> Lt a ws
-           LtEquals a _ -> LtEquals a ws
+           LtEq a _ -> LtEq a ws
            Gt a _ -> Gt a ws
-           GtEquals a _ -> GtEquals a ws
-           NotEquals a _ -> NotEquals a ws
+           GtEq a _ -> GtEq a ws
+           NotEq a _ -> NotEq a ws
            BitOr a _ -> BitOr a ws
            BitAnd a _ -> BitAnd a ws
            BitXor a _ -> BitXor a ws
            ShiftLeft a _ -> ShiftLeft a ws
            ShiftRight a _ -> ShiftRight a ws
-           Percent a _ -> Equals a ws
+           Percent a _ -> Eq a ws
            At a _ -> At a ws)
 
 -- | The associativity of an operator. Each operator is either left-associative or right associative.
@@ -172,12 +178,12 @@ operatorTable =
   , entry1 IsNot 10 L
   , entry In 10 L
   , entry1 NotIn 10 L
-  , entry Equals 10 L
+  , entry Eq 10 L
   , entry Lt 10 L
-  , entry LtEquals 10 L
+  , entry LtEq 10 L
   , entry Gt 10 L
-  , entry GtEquals 10 L
-  , entry NotEquals 10 L
+  , entry GtEq 10 L
+  , entry NotEq 10 L
   , entry BitOr 14 L
   , entry BitXor 15 L
   , entry BitAnd 16 L
@@ -193,8 +199,8 @@ operatorTable =
   , entry Exp 30 R
   ]
   where
-    entry a = OpEntry (a () [])
-    entry1 a = OpEntry (a () [] [])
+    entry a = OpEntry (a (Ann ()) [])
+    entry1 a = OpEntry (a (Ann ()) [] [])
 
 -- | Compare two 'BinOp's to determine whether they represent the same operator, ignoring annotations and trailing whitespace.
 sameOperator :: BinOp a -> BinOp a' -> Bool
@@ -206,12 +212,12 @@ sameOperator op op' =
     (IsNot{}, IsNot{}) -> True
     (In{}, In{}) -> True
     (NotIn{}, NotIn{}) -> True
-    (Equals{}, Equals{}) -> True
+    (Eq{}, Eq{}) -> True
     (Lt{}, Lt{}) -> True
-    (LtEquals{}, LtEquals{}) -> True
+    (LtEq{}, LtEq{}) -> True
     (Gt{}, Gt{}) -> True
-    (GtEquals{}, GtEquals{}) -> True
-    (NotEquals{}, NotEquals{}) -> True
+    (GtEq{}, GtEq{}) -> True
+    (NotEq{}, NotEq{}) -> True
     (Minus{}, Minus{}) -> True
     (Plus{}, Plus{}) -> True
     (Multiply{}, Multiply{}) -> True
@@ -235,12 +241,12 @@ isComparison a =
     IsNot{} -> True
     In{} -> True
     NotIn{} -> True
-    Equals{} -> True
+    Eq{} -> True
     Lt{} -> True
-    LtEquals{} -> True
+    LtEq{} -> True
     Gt{} -> True
-    GtEquals{} -> True
-    NotEquals{} -> True
+    GtEq{} -> True
+    NotEq{} -> True
     _ -> False
 
 -- | Retrieve the information for a given operator from the operator table.

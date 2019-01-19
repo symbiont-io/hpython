@@ -1,6 +1,6 @@
 {-|
 Module      : Language.Python.Syntax
-Copyright   : (C) CSIRO 2017-2018
+Copyright   : (C) CSIRO 2017-2019
 License     : BSD3
 Maintainer  : Isaac Elliott <isaace71295@gmail.com>
 Stability   : experimental
@@ -12,7 +12,8 @@ Key datatypes include 'Module', 'Statement', and 'Expr'.
 -}
 
 module Language.Python.Syntax
-  ( module Language.Python.Syntax.AugAssign
+  ( module Language.Python.Syntax.Ann
+  , module Language.Python.Syntax.AugAssign
   , module Language.Python.Syntax.CommaSep
   , module Language.Python.Syntax.Comment
   , module Language.Python.Syntax.Expr
@@ -31,6 +32,7 @@ module Language.Python.Syntax
   )
 where
 
+import Language.Python.Syntax.Ann
 import Language.Python.Syntax.AugAssign
 import Language.Python.Syntax.CommaSep
 import Language.Python.Syntax.Comment

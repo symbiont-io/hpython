@@ -1,6 +1,6 @@
 {-|
 Module      : Language.Python.Optics.Newlines
-Copyright   : (C) CSIRO 2017-2018
+Copyright   : (C) CSIRO 2017-2019
 License     : BSD3
 Maintainer  : Isaac Elliott <isaace71295@gmail.com>
 Stability   : experimental
@@ -46,18 +46,18 @@ instance (HasNewlines a, HasNewlines b, HasNewlines c, HasNewlines d) => HasNewl
     _Newlines f c <*>
     _Newlines f d
 
-instance HasNewlines (e a) => HasNewlines (ImportAs e v a) where
+instance HasNewlines (e v a) => HasNewlines (ImportAs e v a) where
   _Newlines f (ImportAs a b c) =
     ImportAs a <$>
     _Newlines f b <*>
     _Newlines f c
 
 instance HasNewlines (RelativeModuleName v a) where
-  _Newlines f (RelativeWithName a b) =
-    RelativeWithName <$>
+  _Newlines f (RelativeWithName ann a b) =
+    RelativeWithName ann <$>
     _Newlines f a <*>
     _Newlines f b
-  _Newlines f (Relative a) = Relative <$> _Newlines f a
+  _Newlines f (Relative ann a) = Relative ann <$> _Newlines f a
 
 instance (HasNewlines a, HasNewlines b) => HasNewlines (Either a b) where
   _Newlines f (Left a) = Left <$> _Newlines f a
@@ -87,13 +87,22 @@ instance HasNewlines (Block v a) where
     _Newlines f c
 
 instance HasNewlines Colon where
-  _Newlines f (Colon a) = Colon <$> _Newlines f a
+  _Newlines f (MkColon a) = MkColon <$> _Newlines f a
 
 instance HasNewlines Dot where
-  _Newlines f (Dot a) = Dot <$> _Newlines f a
+  _Newlines f (MkDot a) = MkDot <$> _Newlines f a
 
 instance HasNewlines Comma where
-  _Newlines f (Comma a) = Comma <$> _Newlines f a
+  _Newlines f (MkComma a) = MkComma <$> _Newlines f a
+
+instance HasNewlines At where
+  _Newlines f (MkAt a) = MkAt <$> _Newlines f a
+
+instance HasNewlines (Semicolon a) where
+  _Newlines f (MkSemicolon a b) = MkSemicolon a <$> _Newlines f b
+
+instance HasNewlines Equals where
+  _Newlines f (MkEquals a) = MkEquals <$> _Newlines f a
 
 instance HasNewlines (Suite v a) where
   _Newlines f (SuiteOne a b c) = SuiteOne a b <$> _Newlines f c
@@ -125,12 +134,12 @@ instance HasNewlines (BinOp a) where
       Exp a b -> Exp a <$> _Newlines f b
       BoolAnd a b -> BoolAnd a <$> _Newlines f b
       BoolOr a b -> BoolOr a <$> _Newlines f b
-      Equals a b -> Equals a <$> _Newlines f b
+      Eq a b -> Eq a <$> _Newlines f b
       Lt a b -> Lt a <$> _Newlines f b
-      LtEquals a b -> LtEquals a <$> _Newlines f b
+      LtEq a b -> LtEq a <$> _Newlines f b
       Gt a b -> Gt a <$> _Newlines f b
-      GtEquals a b -> GtEquals a <$> _Newlines f b
-      NotEquals a b -> NotEquals a <$> _Newlines f b
+      GtEq a b -> GtEq a <$> _Newlines f b
+      NotEq a b -> NotEq a <$> _Newlines f b
       Multiply a b -> Multiply a <$> _Newlines f b
       Divide a b -> Divide a <$> _Newlines f b
       FloorDivide a b -> FloorDivide a <$> _Newlines f b
@@ -380,7 +389,7 @@ instance HasNewlines (Expr v a) where
             _Newlines fun b <*>
             go c <*>
             _Newlines fun d
-          Ident a -> Ident <$> _Newlines fun a
+          Ident a b -> Ident a <$> _Newlines fun b
           Int a b c -> Int a b <$> _Newlines fun c
           Float a b c -> Float a b <$> _Newlines fun c
           Imag a b c -> Imag a b <$> _Newlines fun c

@@ -8,7 +8,7 @@
 
 {-|
 Module      : Language.Python.Internal.Parse
-Copyright   : (C) CSIRO 2017-2018
+Copyright   : (C) CSIRO 2017-2019
 License     : BSD3
 Maintainer  : Isaac Elliott <isaace71295@gmail.com>
 Stability   : experimental
@@ -26,12 +26,15 @@ module Language.Python.Internal.Parse
     -- * Parsers
   , token
     -- ** Symbols
-  , comma
-  , rightParen
+  , at
   , colon
+  , comma
+  , dot
+  , doubleStar
+  , equals
+  , rightParen
   , semicolon
   , star
-  , doubleStar
     -- ** Atomic forms
   , identifier
   , bool
@@ -124,13 +127,13 @@ import qualified Text.Megaparsec as Megaparsec
 import Language.Python.Internal.Lexer (SrcInfo (..), withSrcInfo)
 import Language.Python.Internal.Syntax.IR
 import Language.Python.Internal.Token
+import Language.Python.Syntax.Ann
 import Language.Python.Syntax.AugAssign
 import Language.Python.Syntax.CommaSep
 import Language.Python.Syntax.Comment
 import Language.Python.Syntax.Ident
 import Language.Python.Syntax.Import
 import Language.Python.Syntax.ModuleNames
-import Language.Python.Syntax.Numbers
 import Language.Python.Syntax.Operator.Binary
 import Language.Python.Syntax.Operator.Unary
 import Language.Python.Syntax.Punctuation
@@ -272,7 +275,7 @@ token ws f label = (,) <$> satisfy f <*> many ws <?> label
 
 identifier :: MonadParsec e PyTokens m => m Whitespace -> m (Ident '[] SrcInfo)
 identifier ws =
-  (\(TkIdent n ann) -> MkIdent ann n) <$>
+  (\(TkIdent n ann) -> MkIdent (Ann ann) n) <$>
   satisfy (\case; TkIdent{} -> True; _ -> False) <*>
   many ws
 
@@ -301,30 +304,30 @@ ellipsis ws =
 
 integer :: MonadParsec e PyTokens m => m Whitespace -> m (Expr SrcInfo)
 integer ws =
-  (\(TkInt n) -> Int (_intLiteralAnn n) n) <$>
+  (\(TkInt n) -> Int (n ^. annot_) n) <$>
   satisfy (\case; TkInt{} -> True; _ -> False) <*>
   many ws
 
 float :: MonadParsec e PyTokens m => m Whitespace -> m (Expr SrcInfo)
 float ws =
-  (\(TkFloat n) -> Float (_floatLiteralAnn n) n) <$>
+  (\(TkFloat n) -> Float (n ^. annot_) n) <$>
   satisfy (\case; TkFloat{} -> True; _ -> False) <*>
   many ws
 
 imag :: MonadParsec e PyTokens m => m Whitespace -> m (Expr SrcInfo)
 imag ws =
-  (\(TkImag n) -> Imag (_imagLiteralAnn n) n) <$>
+  (\(TkImag n) -> Imag (n ^. annot_) n) <$>
   satisfy (\case; TkImag{} -> True; _ -> False) <*>
   many ws
 
 stringOrBytes :: MonadParsec e PyTokens m => m Whitespace -> m (Expr SrcInfo)
 stringOrBytes ws =
-  fmap (\vs -> String (_stringLiteralAnn $ NonEmpty.head vs) vs) . some1 $
+  fmap (\vs -> String (view annot_ $ NonEmpty.head vs) vs) . some1 $
   (\case
-     TkString sp qt st val ann -> StringLiteral ann sp qt st val
-     TkBytes sp qt st val ann -> BytesLiteral ann sp qt st val
-     TkRawString sp st qt val ann -> RawStringLiteral ann sp st qt val
-     TkRawBytes sp st qt val ann -> RawBytesLiteral ann sp st qt val
+     TkString sp qt st val ann -> StringLiteral (Ann ann) sp qt st val
+     TkBytes sp qt st val ann -> BytesLiteral (Ann ann) sp qt st val
+     TkRawString sp st qt val ann -> RawStringLiteral (Ann ann) sp st qt val
+     TkRawBytes sp st qt val ann -> RawBytesLiteral (Ann ann) sp st qt val
      _ -> error "impossible") <$>
   satisfy
     (\case
@@ -347,6 +350,26 @@ indent =
 level :: MonadParsec s PyTokens m => m (Indents SrcInfo)
 level =
   (\(TkLevel _ i) -> i) <$> satisfy (\case; TkLevel{} -> True; _ -> False) <?> "level indentation"
+
+comma :: MonadParsec e PyTokens m => m Whitespace -> m (PyToken SrcInfo, Comma)
+comma ws = second MkComma <$> token ws (\case; TkComma{} -> True; _ -> False) ","
+
+dot :: MonadParsec e PyTokens m => m Whitespace -> m (PyToken SrcInfo, Dot)
+dot ws = second MkDot <$> token ws (\case; TkDot{} -> True; _ -> False) "."
+
+at :: MonadParsec e PyTokens m => m Whitespace -> m (PyToken SrcInfo, At)
+at ws = second MkAt <$> token ws (\case; TkAt{} -> True; _ -> False) "@"
+
+colon :: MonadParsec e PyTokens m => m Whitespace -> m (PyToken SrcInfo, Colon)
+colon ws = second MkColon <$> token ws (\case; TkColon{} -> True; _ -> False) ":"
+
+equals :: MonadParsec e PyTokens m => m Whitespace -> m (PyToken SrcInfo, Equals)
+equals ws = second MkEquals <$> token ws (\case; TkEq{} -> True; _ -> False) "="
+
+semicolon :: MonadParsec e PyTokens m => m Whitespace -> m (PyToken SrcInfo, Semicolon SrcInfo)
+semicolon ws =
+  (\(a, b) -> (a, MkSemicolon (Ann $ pyTokenAnn a) b)) <$>
+  token ws (\case; TkSemicolon{} -> True; _ -> False) ";"
 
 exprList :: MonadParsec e PyTokens m => m Whitespace -> m (Expr SrcInfo)
 exprList ws =
@@ -455,11 +478,11 @@ orTest :: MonadParsec e PyTokens m => m Whitespace -> m (Expr SrcInfo)
 orTest ws = binOp orOp andTest
   where
     orOp =
-      (\(tk, ws) -> BoolOr (pyTokenAnn tk) ws) <$>
+      (\(tk, ws) -> BoolOr (Ann $ pyTokenAnn tk) ws) <$>
       token ws (\case; TkOr{} -> True; _ -> False) "or"
 
     andOp =
-      (\(tk, ws) -> BoolAnd (pyTokenAnn tk) ws) <$>
+      (\(tk, ws) -> BoolAnd (Ann $ pyTokenAnn tk) ws) <$>
       token ws (\case; TkAnd{} -> True; _ -> False) "and"
     andTest = binOp andOp notTest
 
@@ -469,49 +492,49 @@ orTest ws = binOp orOp andTest
       comparison
 
     compOp =
-      (\(tk, ws) -> maybe (Is (pyTokenAnn tk) ws) (IsNot (pyTokenAnn tk) ws)) <$>
+      (\(tk, ws) -> maybe (Is (Ann $ pyTokenAnn tk) ws) (IsNot (Ann $ pyTokenAnn tk) ws)) <$>
       token ws (\case; TkIs{} -> True; _ -> False) "is" <*>
       optional (snd <$> token ws (\case; TkNot{} -> True; _ -> False) "not")
 
       <|>
 
-      (\(tk, ws) -> NotIn (pyTokenAnn tk) ws) <$>
+      (\(tk, ws) -> NotIn (Ann $ pyTokenAnn tk) ws) <$>
       token ws (\case; TkNot{} -> True; _ -> False) "not" <*>
       (snd <$> token ws (\case; TkIn{} -> True; _ -> False) "in")
 
       <|>
 
-      (\(tk, ws) -> In (pyTokenAnn tk) ws) <$>
+      (\(tk, ws) -> In (Ann $ pyTokenAnn tk) ws) <$>
       token ws (\case; TkIn{} -> True; _ -> False) "in"
 
       <|>
 
-      (\(tk, ws) -> Equals (pyTokenAnn tk) ws) <$>
+      (\(tk, ws) -> Eq (Ann $ pyTokenAnn tk) ws) <$>
       token ws (\case; TkDoubleEq{} -> True; _ -> False) "=="
 
       <|>
 
-      (\(tk, ws) -> Lt (pyTokenAnn tk) ws) <$>
+      (\(tk, ws) -> Lt (Ann $ pyTokenAnn tk) ws) <$>
       token ws (\case; TkLt{} -> True; _ -> False) "<"
 
       <|>
 
-      (\(tk, ws) -> LtEquals (pyTokenAnn tk) ws) <$>
+      (\(tk, ws) -> LtEq (Ann $ pyTokenAnn tk) ws) <$>
       token ws (\case; TkLte{} -> True; _ -> False) "<="
 
       <|>
 
-      (\(tk, ws) -> Gt (pyTokenAnn tk) ws) <$>
+      (\(tk, ws) -> Gt (Ann $ pyTokenAnn tk) ws) <$>
       token ws (\case; TkGt{} -> True; _ -> False) ">"
 
       <|>
 
-      (\(tk, ws) -> GtEquals (pyTokenAnn tk) ws) <$>
+      (\(tk, ws) -> GtEq (Ann $ pyTokenAnn tk) ws) <$>
       token ws (\case; TkGte{} -> True; _ -> False) ">="
 
       <|>
 
-      (\(tk, ws) -> NotEquals (pyTokenAnn tk) ws) <$>
+      (\(tk, ws) -> NotEq (Ann $ pyTokenAnn tk) ws) <$>
       token ws (\case; TkBangEq{} -> True; _ -> False) "!="
 
     comparison = binOp compOp $ orExpr ws
@@ -532,7 +555,7 @@ lambda ws =
   (\(tk, s) -> Lambda (pyTokenAnn tk) s) <$>
   token ws (\case; TkLambda{} -> True; _ -> False) "lambda" <*>
   untypedParams ws <*>
-  (Colon . snd <$> token ws (\case; TkColon{} -> True; _ -> False) ":") <*>
+  (MkColon . snd <$> token ws (\case; TkColon{} -> True; _ -> False) ":") <*>
   expr ws
 
 lambdaNoCond :: MonadParsec e PyTokens m => m Whitespace -> m (Expr SrcInfo)
@@ -540,7 +563,7 @@ lambdaNoCond ws =
   (\(tk, s) -> Lambda (pyTokenAnn tk) s) <$>
   token ws (\case; TkLambda{} -> True; _ -> False) "lambda" <*>
   untypedParams ws <*>
-  (Colon . snd <$> token ws (\case; TkColon{} -> True; _ -> False) ":") <*>
+  (MkColon . snd <$> token ws (\case; TkColon{} -> True; _ -> False) ":") <*>
   exprNoCond ws
 
 exprNoCond :: MonadParsec e PyTokens m => m Whitespace -> m (Expr SrcInfo)
@@ -574,84 +597,84 @@ doubleStar sp = token sp (\case; TkDoubleStar{} -> True; _ -> False) "**"
 orExpr :: MonadParsec e PyTokens m => m Whitespace -> m (Expr SrcInfo)
 orExpr ws =
   binOp
-    ((\(tk, ws) -> BitOr (pyTokenAnn tk) ws) <$>
+    ((\(tk, ws) -> BitOr (Ann $ pyTokenAnn tk) ws) <$>
      token ws (\case; TkPipe{} -> True; _ -> False) "|")
     xorExpr
   where
     xorExpr =
       binOp
-        ((\(tk, ws) -> BitXor (pyTokenAnn tk) ws) <$>
+        ((\(tk, ws) -> BitXor (Ann $ pyTokenAnn tk) ws) <$>
          token ws (\case; TkCaret{} -> True; _ -> False) "^")
         andExpr
 
     andExpr =
       binOp
-        ((\(tk, ws) -> BitAnd (pyTokenAnn tk) ws) <$>
+        ((\(tk, ws) -> BitAnd (Ann $ pyTokenAnn tk) ws) <$>
          token ws (\case; TkAmpersand{} -> True; _ -> False) "&")
         shiftExpr
 
     shiftExpr =
       binOp
-        ((\(tk, ws) -> ShiftLeft (pyTokenAnn tk) ws) <$>
+        ((\(tk, ws) -> ShiftLeft (Ann $ pyTokenAnn tk) ws) <$>
          token ws (\case; TkShiftLeft{} -> True; _ -> False) "<<"
 
          <|>
 
-         (\(tk, ws) -> ShiftRight (pyTokenAnn tk) ws) <$>
+         (\(tk, ws) -> ShiftRight (Ann $ pyTokenAnn tk) ws) <$>
          token ws (\case; TkShiftRight{} -> True; _ -> False) ">>")
         arithExpr
 
     arithOp =
-      (\(tk, ws) -> Plus (pyTokenAnn tk) ws) <$>
+      (\(tk, ws) -> Plus (Ann $ pyTokenAnn tk) ws) <$>
       token ws (\case; TkPlus{} -> True; _ -> False) "+"
 
       <|>
 
-      (\(tk, ws) -> Minus (pyTokenAnn tk) ws) <$>
+      (\(tk, ws) -> Minus (Ann $ pyTokenAnn tk) ws) <$>
       token ws (\case; TkMinus{} -> True; _ -> False) "-"
 
     arithExpr = binOp arithOp term
 
     termOp =
-      (\(tk, ws) -> Multiply (pyTokenAnn tk) ws) <$>
+      (\(tk, ws) -> Multiply (Ann $ pyTokenAnn tk) ws) <$>
       star ws
 
       <|>
 
-      (\(tk, ws) -> At (pyTokenAnn tk) ws) <$>
+      (\(tk, ws) -> At (Ann $ pyTokenAnn tk) ws) <$>
       token ws (\case; TkAt{} -> True; _ -> False) "@"
 
       <|>
 
-      (\(tk, ws) -> Divide (pyTokenAnn tk) ws) <$>
+      (\(tk, ws) -> Divide (Ann $ pyTokenAnn tk) ws) <$>
       token ws (\case; TkSlash{} -> True; _ -> False) "/"
 
       <|>
 
-      (\(tk, ws) -> FloorDivide (pyTokenAnn tk) ws) <$>
+      (\(tk, ws) -> FloorDivide (Ann $ pyTokenAnn tk) ws) <$>
       token ws (\case; TkDoubleSlash{} -> True; _ -> False) "//"
 
       <|>
 
-      (\(tk, ws) -> Percent (pyTokenAnn tk) ws) <$>
+      (\(tk, ws) -> Percent (Ann $ pyTokenAnn tk) ws) <$>
       token ws (\case; TkPercent{} -> True; _ -> False) "%"
 
     term = binOp termOp factor
 
     factor =
-      ((\(tk, s) -> let ann = pyTokenAnn tk in UnOp ann (Negate ann s)) <$>
+      ((\(tk, s) -> let ann = pyTokenAnn tk in UnOp ann (Negate (Ann ann) s)) <$>
        token ws (\case; TkMinus{} -> True; _ -> False) "-"
        <|>
-       (\(tk, s) -> let ann = pyTokenAnn tk in UnOp ann (Positive ann s)) <$>
+       (\(tk, s) -> let ann = pyTokenAnn tk in UnOp ann (Positive (Ann ann) s)) <$>
        token ws (\case; TkPlus{} -> True; _ -> False) "+"
        <|>
-       (\(tk, s) -> let ann = pyTokenAnn tk in UnOp ann (Complement ann s)) <$>
+       (\(tk, s) -> let ann = pyTokenAnn tk in UnOp ann (Complement (Ann ann) s)) <$>
        token ws (\case; TkTilde{} -> True; _ -> False) "~") <*> factor
       <|>
       power
 
     powerOp =
-      (\(tk, ws) -> Exp (pyTokenAnn tk) ws) <$>
+      (\(tk, ws) -> Exp (Ann $ pyTokenAnn tk) ws) <$>
       doubleStar ws
 
     power =
@@ -766,7 +789,7 @@ orExpr ws =
          Nothing -> pure $ Dict ann ws1 Nothing
          Just (Left (Left ex)) -> do
            maybeColon <-
-             optional $ Colon . snd <$> token anySpace (\case; TkColon{} -> True; _ -> False) ":"
+             optional $ MkColon . snd <$> token anySpace (\case; TkColon{} -> True; _ -> False) ":"
            case maybeColon of
              Nothing ->
                -- The order of this choice matters because commaSepRest is implemented
@@ -819,7 +842,7 @@ orExpr ws =
       float ws <|>
       imag ws <|>
       stringOrBytes ws <|>
-      Ident <$> identifier ws <|>
+      (\i -> Ident (i ^. annot_) i) <$> identifier ws <|>
       parensOrUnit
 
 simpleStatement :: MonadParsec e PyTokens m => m (SimpleStatement SrcInfo)
@@ -862,69 +885,60 @@ simpleStatement =
       uncurry (Continue . pyTokenAnn) <$>
       token space (\case; TkContinue{} -> True; _ -> False) "continue"
 
+    mkAugAssign ctor match name =
+      (\(tk, s) -> MkAugAssign (Ann $ pyTokenAnn tk) ctor s) <$>
+      token space match name
+
     augAssign =
-      (\(tk, s) -> MkAugAssign PlusEq (pyTokenAnn tk) s) <$>
-      token space (\case; TkPlusEq{} -> True; _ -> False) "+="
+      mkAugAssign PlusEq (\case; TkPlusEq{} -> True; _ -> False) "+="
 
       <|>
 
-      (\(tk, s) -> MkAugAssign MinusEq (pyTokenAnn tk) s) <$>
-      token space (\case; TkMinusEq{} -> True; _ -> False) "-="
+      mkAugAssign MinusEq (\case; TkMinusEq{} -> True; _ -> False) "-="
 
       <|>
 
-      (\(tk, s) -> MkAugAssign AtEq (pyTokenAnn tk) s) <$>
-      token space (\case; TkAtEq{} -> True; _ -> False) "@="
+      mkAugAssign AtEq (\case; TkAtEq{} -> True; _ -> False) "@="
 
       <|>
 
-      (\(tk, s) -> MkAugAssign StarEq (pyTokenAnn tk) s) <$>
-      token space (\case; TkStarEq{} -> True; _ -> False) "*="
+      mkAugAssign StarEq (\case; TkStarEq{} -> True; _ -> False) "*="
 
       <|>
 
-      (\(tk, s) -> MkAugAssign SlashEq (pyTokenAnn tk) s) <$>
-      token space (\case; TkSlashEq{} -> True; _ -> False) "/="
+      mkAugAssign SlashEq (\case; TkSlashEq{} -> True; _ -> False) "/="
 
       <|>
 
-      (\(tk, s) -> MkAugAssign PercentEq (pyTokenAnn tk) s) <$>
-      token space (\case; TkPercentEq{} -> True; _ -> False) "%="
+      mkAugAssign PercentEq (\case; TkPercentEq{} -> True; _ -> False) "%="
 
       <|>
 
-      (\(tk, s) -> MkAugAssign AmpersandEq (pyTokenAnn tk) s) <$>
-      token space (\case; TkAmpersandEq{} -> True; _ -> False) "&="
+      mkAugAssign AmpersandEq (\case; TkAmpersandEq{} -> True; _ -> False) "&="
 
       <|>
 
-      (\(tk, s) -> MkAugAssign PipeEq (pyTokenAnn tk) s) <$>
-      token space (\case; TkPipeEq{} -> True; _ -> False) "|="
+      mkAugAssign PipeEq (\case; TkPipeEq{} -> True; _ -> False) "|="
 
       <|>
 
-      (\(tk, s) -> MkAugAssign CaretEq (pyTokenAnn tk) s) <$>
-      token space (\case; TkCaretEq{} -> True; _ -> False) "^="
+      mkAugAssign CaretEq (\case; TkCaretEq{} -> True; _ -> False) "^="
 
       <|>
 
-      (\(tk, s) -> MkAugAssign ShiftLeftEq (pyTokenAnn tk) s) <$>
-      token space (\case; TkShiftLeftEq{} -> True; _ -> False) "<<="
+      mkAugAssign ShiftLeftEq (\case; TkShiftLeftEq{} -> True; _ -> False) "<<="
 
       <|>
 
-      (\(tk, s) -> MkAugAssign ShiftRightEq (pyTokenAnn tk) s) <$>
-      token space (\case; TkShiftRightEq{} -> True; _ -> False) ">>="
+      mkAugAssign ShiftRightEq (\case; TkShiftRightEq{} -> True; _ -> False) ">>="
 
       <|>
 
-      (\(tk, s) -> MkAugAssign DoubleStarEq (pyTokenAnn tk) s) <$>
-      token space (\case; TkDoubleStarEq{} -> True; _ -> False) "**="
+      mkAugAssign DoubleStarEq (\case; TkDoubleStarEq{} -> True; _ -> False) "**="
 
       <|>
 
-      (\(tk, s) -> MkAugAssign DoubleSlashEq (pyTokenAnn tk) s) <$>
-      token space (\case; TkDoubleSlashEq{} -> True; _ -> False) "//="
+      mkAugAssign DoubleSlashEq (\case; TkDoubleSlashEq{} -> True; _ -> False) "//="
 
     exprOrAssignSt =
       (\a ->
@@ -938,7 +952,7 @@ simpleStatement =
         (Left <$>
          some1
            ((,) <$>
-            (snd <$> token space (\case; TkEq{} -> True; _ -> False) "=") <*>
+            (snd <$> equals space) <*>
             (yieldExpr space <|> exprOrStarList space))
 
            <|>
@@ -981,8 +995,8 @@ simpleStatement =
              (snd <$> token space (\case; TkDot{} -> True; _ -> False) ".") <*>
              identifier space)
 
-        importAs ws getAnn p =
-          (\a -> ImportAs (getAnn a) a) <$>
+        importAs ws ann p =
+          (\a -> ImportAs (Ann $ ann a) a) <$>
           p <*>
           optional
             ((,) <$>
@@ -992,41 +1006,45 @@ simpleStatement =
         importName =
           (\(tk, s) -> Import (pyTokenAnn tk) $ NonEmpty.fromList s) <$>
           token space (\case; TkImport{} -> True; _ -> False) "import" <*>
-          commaSep1 space (importAs space _moduleNameAnn moduleName)
+          commaSep1 space (importAs space (view annot_) moduleName)
 
         dots =
           fmap concat . some $
-          pure . Dot . snd <$> token space (\case; TkDot{} -> True; _ -> False) "."
+          pure . snd <$> dot space
 
           <|>
 
-          (\(_, ws) -> [Dot [], Dot [], Dot ws]) <$>
+          (\(_, ws) -> [MkDot [], MkDot [], MkDot ws]) <$>
           token space (\case; TkEllipsis{} -> True; _ -> False) "..."
 
         relativeModuleName =
-          RelativeWithName [] <$> moduleName
+          withSrcInfo $
+          (\b ann -> RelativeWithName (Ann ann) [] b) <$> moduleName
 
           <|>
 
-          (\a -> maybe (Relative $ NonEmpty.fromList a) (RelativeWithName a)) <$>
+          (\a ->
+             maybe
+               (\ann -> Relative (Ann ann) $ NonEmpty.fromList a)
+               (\b ann -> RelativeWithName (Ann ann) a b)) <$>
           dots <*>
           optional moduleName
 
         importTargets =
-          (\(tk, s) -> ImportAll (pyTokenAnn tk) s) <$>
+          (\(tk, s) -> ImportAll (Ann $ pyTokenAnn tk) s) <$>
           star space
 
           <|>
 
-          (\(tk, s) -> ImportSomeParens (pyTokenAnn tk) s) <$>
+          (\(tk, s) -> ImportSomeParens (Ann $ pyTokenAnn tk) s) <$>
           token anySpace (\case; TkLeftParen{} -> True; _ -> False) "(" <*>
-          commaSep1' anySpace (importAs anySpace _identAnn (identifier anySpace)) <*>
+          commaSep1' anySpace (importAs anySpace (view annot_) (identifier anySpace)) <*>
           (snd <$> rightParen space)
 
           <|>
 
-          (\a -> ImportSome (commaSep1Head a ^. importAsAnn) a) <$>
-          commaSep1 space (importAs space _identAnn (identifier space))
+          (\a -> ImportSome (Ann $ commaSep1Head a ^. importAsAnn) a) <$>
+          commaSep1 space (importAs space (view annot_) (identifier space))
 
         importFrom =
           (\(tk, s) -> From (pyTokenAnn tk) s) <$>
@@ -1072,13 +1090,13 @@ statement pIndent indentBefore =
 blank :: MonadParsec e PyTokens m => m (Blank SrcInfo)
 blank =
   withSrcInfo $
-  (\b c a -> Blank a b c) <$>
+  (\b c a -> Blank (Ann a) b c) <$>
   some space <*>
   optional comment
 
   <|>
 
-  (\b a -> Blank a [] b) <$> optional comment
+  (\b a -> Blank (Ann a) [] b) <$> optional comment
 
 suite :: MonadParsec e PyTokens m => m (Suite SrcInfo)
 suite =
@@ -1105,15 +1123,6 @@ suite =
     line i =
       Left <$> ((,) <$> blank <*> eol) <|>
       Right <$> (statement level =<< i)
-
-comma :: MonadParsec e PyTokens m => m Whitespace -> m (PyToken SrcInfo, Comma)
-comma ws = second Comma <$> token ws (\case; TkComma{} -> True; _ -> False) ","
-
-colon :: MonadParsec e PyTokens m => m Whitespace -> m (PyToken SrcInfo, Colon)
-colon ws = second Colon <$> token ws (\case; TkColon{} -> True; _ -> False) ":"
-
-semicolon :: MonadParsec e PyTokens m => m Whitespace -> m (PyToken SrcInfo, [Whitespace])
-semicolon ws = token ws (\case; TkSemicolon{} -> True; _ -> False) ";"
 
 commaSep :: MonadParsec e PyTokens m => m Whitespace -> m a -> m (CommaSep a)
 commaSep ws pa =
@@ -1205,8 +1214,8 @@ upPositional :: MonadParsec e PyTokens m => m Whitespace -> m (Param SrcInfo)
 upPositional ws =
   (\a ->
     maybe
-      (PositionalParam (_identAnn a) a Nothing)
-      (uncurry $ KeywordParam (_identAnn a) a Nothing)) <$>
+      (PositionalParam (a ^. annot_) a Nothing)
+      (uncurry $ KeywordParam (a ^. annot_) a Nothing)) <$>
   identifier ws <*>
   optional
     ((,) <$>
@@ -1237,15 +1246,15 @@ untypedParams ws = someParams (upPositional ws) (upStar ws) (upDoubleStar ws)
 tyAnn :: MonadParsec e PyTokens m => m (Colon, Expr SrcInfo)
 tyAnn =
   (,) <$>
-  (Colon . snd <$> token anySpace (\case; TkColon{} -> True; _ -> False) ":") <*>
+  (MkColon . snd <$> token anySpace (\case; TkColon{} -> True; _ -> False) ":") <*>
   expr anySpace
 
 tpPositional :: MonadParsec e PyTokens m => m (Param SrcInfo)
 tpPositional =
   (\a b ->
     maybe
-      (PositionalParam (_identAnn a) a b)
-      (uncurry $ KeywordParam (_identAnn a) a b)) <$>
+      (PositionalParam (a ^. annot_) a b)
+      (uncurry $ KeywordParam (a ^. annot_) a b)) <$>
   identifier anySpace <*>
   optional tyAnn <*>
   optional
@@ -1277,12 +1286,12 @@ arg =
   (do
       e <- exprComp anySpace
       case e of
-        Ident ident -> do
+        Ident ann ident -> do
           eqSpaces <-
             optional $ snd <$> token anySpace (\case; TkEq{} -> True; _ -> False) "="
           case eqSpaces of
-            Nothing -> pure $ PositionalArg (e ^. exprAnn) e
-            Just s  -> KeywordArg (e ^. exprAnn) ident s <$> expr anySpace
+            Nothing -> pure $ PositionalArg ann e
+            Just s -> KeywordArg ann ident s <$> expr anySpace
         _ -> pure $ PositionalArg (e ^. exprAnn) e)
 
   <|>
@@ -1319,7 +1328,7 @@ decoratorValue = do
     derefs =
       foldl
         (\b (ws, a) -> Deref (b ^. exprAnn) b ws a)
-        (Ident id1)
+        (Ident (id1 ^. annot_) id1)
         ids
   pure $
     case args of
@@ -1332,7 +1341,7 @@ decorator
   -> m (Decorator SrcInfo)
 decorator indentBefore =
   (\(tk, spcs) a b -> Decorator (pyTokenAnn tk) indentBefore spcs a b) <$>
-  token space (\case; TkAt{} -> True; _ -> False) "@" <*>
+  at space <*>
   decoratorValue <*>
   optional comment <*>
   eol <*>
@@ -1557,4 +1566,4 @@ module_ =
   ModuleEmpty <$ eof
 
   where
-    tlIndent = level <|> withSrcInfo (pure $ Indents [])
+    tlIndent = level <|> withSrcInfo (pure $ Indents [] . Ann)

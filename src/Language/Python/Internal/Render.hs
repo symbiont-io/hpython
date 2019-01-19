@@ -4,7 +4,7 @@
 
 {-|
 Module      : Language.Python.Internal.Render
-Copyright   : (C) CSIRO 2017-2018
+Copyright   : (C) CSIRO 2017-2019
 License     : BSD3
 Maintainer  : Isaac Elliott <isaace71295@gmail.com>
 Stability   : experimental
@@ -588,8 +588,13 @@ renderNewline :: Newline -> PyToken ()
 renderNewline nl = TkNewline nl ()
 
 renderComma :: Comma -> RenderOutput ()
-renderComma (Comma ws) = do
+renderComma (MkComma ws) = do
   singleton $ TkComma ()
+  traverse_ renderWhitespace ws
+
+renderAt :: At -> RenderOutput ()
+renderAt (MkAt ws) = do
+  singleton $ TkAt ()
   traverse_ renderWhitespace ws
 
 renderCommaSep :: (a -> RenderOutput ()) -> CommaSep a -> RenderOutput ()
@@ -953,7 +958,7 @@ renderExpr (Float _ n ws) = do
 renderExpr (Imag _ n ws) = do
   singleton $ TkImag (() <$ n)
   traverse_ renderWhitespace ws
-renderExpr (Ident name) = renderIdent name
+renderExpr (Ident _ name) = renderIdent name
 renderExpr (List _ ws1 exprs ws2) = do
   brackets $ do
     traverse_ renderWhitespace ws1
@@ -1065,18 +1070,18 @@ renderModuleName (ModuleNameMany _ n dot rest) = do
   renderModuleName rest
 
 renderDot :: Dot -> RenderOutput ()
-renderDot (Dot ws) = do
+renderDot (MkDot ws) = do
   singleton $ TkDot ()
   traverse_ renderWhitespace ws
 
 renderRelativeModuleName :: RelativeModuleName v a -> RenderOutput ()
-renderRelativeModuleName (RelativeWithName ds mn) = do
+renderRelativeModuleName (RelativeWithName _ ds mn) = do
   traverse_ renderDot ds
   renderModuleName mn
-renderRelativeModuleName (Relative ds) =
+renderRelativeModuleName (Relative _ ds) =
   traverse_ renderDot ds
 
-renderImportAs :: (e a -> RenderOutput ()) -> ImportAs e v a -> RenderOutput ()
+renderImportAs :: (e v a -> RenderOutput ()) -> ImportAs e v a -> RenderOutput ()
 renderImportAs f (ImportAs _ ea m) = do
   f ea
   traverse_
@@ -1148,8 +1153,7 @@ renderSimpleStatement (Assign _ lvalue rvalues) = do
   renderExpr lvalue
   traverse_
     (\(ws2, rvalue) -> do
-       singleton $ TkEq ()
-       traverse_ renderWhitespace ws2
+       renderEquals ws2
        renderYield parensGenerator rvalue)
     rvalues
 renderSimpleStatement (AugAssign _ lvalue as rvalue) = do
@@ -1218,8 +1222,18 @@ renderBlock (Block a b c) = do
       (final . renderStatement))
     c
 
+renderSemicolon :: Semicolon a -> RenderOutput ()
+renderSemicolon (MkSemicolon _ ws) = do
+  singleton $ TkSemicolon ()
+  traverse_ renderWhitespace ws
+
+renderEquals :: Equals -> RenderOutput ()
+renderEquals (MkEquals ws) = do
+  singleton $ TkEq ()
+  traverse_ renderWhitespace ws
+
 renderColon :: Colon -> RenderOutput ()
-renderColon (Colon ws) = do
+renderColon (MkColon ws) = do
   singleton $ TkColon ()
   traverse_ renderWhitespace ws
 
@@ -1239,8 +1253,7 @@ renderSuite (SuiteOne _ a b) = do
 renderDecorator :: Decorator v a -> RenderOutput ()
 renderDecorator (Decorator _ a b c d e f) = do
   renderIndents a
-  singleton $ TkAt ()
-  traverse_ renderWhitespace b
+  renderAt b
   renderExpr c
   traverse_ renderComment d
   singleton (renderNewline e)
@@ -1421,15 +1434,10 @@ renderSmallStatement (MkSmallStatement s ss sc cmt nl) = do
   renderSimpleStatement s
   traverse_
     (\(b, c) -> do
-       singleton $ TkSemicolon ()
-       traverse_ renderWhitespace b
+       renderSemicolon b
        renderSimpleStatement c)
     ss
-  traverse_
-    (\b -> do
-        singleton $ TkSemicolon ()
-        traverse_ renderWhitespace b)
-    sc
+  traverse_ renderSemicolon sc
   traverse_ renderComment cmt
   traverse_ (singleton . renderNewline) nl
 
@@ -1568,22 +1576,22 @@ renderBinOp (BoolAnd _ ws) = do
 renderBinOp (BoolOr _ ws) = do
   singleton $ TkOr ()
   traverse_ renderWhitespace ws
-renderBinOp (Equals _ ws) = do
+renderBinOp (Eq _ ws) = do
   singleton $ TkDoubleEq ()
   traverse_ renderWhitespace ws
 renderBinOp (Lt _ ws) = do
   singleton $ TkLt ()
   traverse_ renderWhitespace ws
-renderBinOp (LtEquals _ ws) = do
+renderBinOp (LtEq _ ws) = do
   singleton $ TkLte ()
   traverse_ renderWhitespace ws
 renderBinOp (Gt _ ws) = do
   singleton $ TkGt ()
   traverse_ renderWhitespace ws
-renderBinOp (GtEquals _ ws) = do
+renderBinOp (GtEq _ ws) = do
   singleton $ TkGte ()
   traverse_ renderWhitespace ws
-renderBinOp (NotEquals _ ws) = do
+renderBinOp (NotEq _ ws) = do
   singleton $ TkBangEq ()
   traverse_ renderWhitespace ws
 renderBinOp (Percent _ ws) = do

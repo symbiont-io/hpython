@@ -1,9 +1,9 @@
 {-# language LambdaCase #-}
-{-# language DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
+{-# language DeriveFunctor, DeriveFoldable, DeriveTraversable, DeriveGeneric #-}
 
 {-|
 Module      : Language.Python.Syntax.CommaSep
-Copyright   : (C) CSIRO 2017-2018
+Copyright   : (C) CSIRO 2017-2019
 License     : BSD3
 Maintainer  : Isaac Elliott <isaace71295@gmail.com>
 Stability   : experimental
@@ -32,6 +32,7 @@ import Data.Functor (($>))
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Maybe (fromMaybe)
 import Data.Semigroup (Semigroup(..))
+import GHC.Generics (Generic)
 
 import Language.Python.Syntax.Punctuation
 import Language.Python.Syntax.Whitespace (Whitespace (Space), HasTrailingWhitespace (..))
@@ -41,7 +42,7 @@ data CommaSep a
   = CommaSepNone
   | CommaSepOne a
   | CommaSepMany a Comma (CommaSep a)
-  deriving (Eq, Show, Functor, Foldable, Traversable)
+  deriving (Eq, Show, Functor, Foldable, Traversable, Generic)
 
 -- | 'Traversal' targeting the trailing whitespace in a comma separated list.
 --
@@ -52,8 +53,8 @@ csTrailingWhitespace
   => Traversal' (CommaSep a) [Whitespace]
 csTrailingWhitespace _ CommaSepNone = pure CommaSepNone
 csTrailingWhitespace f (CommaSepOne a) = CommaSepOne <$> trailingWhitespace f a
-csTrailingWhitespace f (CommaSepMany a (Comma b) CommaSepNone) =
-  (\b' -> CommaSepMany a (Comma b') CommaSepNone) <$> f b
+csTrailingWhitespace f (CommaSepMany a (MkComma b) CommaSepNone) =
+  (\b' -> CommaSepMany a (MkComma b') CommaSepNone) <$> f b
 csTrailingWhitespace f (CommaSepMany a b c) =
   CommaSepMany a b <$> csTrailingWhitespace f c
 
@@ -68,7 +69,7 @@ maybeToCommaSep = maybe CommaSepNone CommaSepOne
 listToCommaSep :: [a] -> CommaSep a
 listToCommaSep [] = CommaSepNone
 listToCommaSep [a] = CommaSepOne a
-listToCommaSep (a:as) = CommaSepMany a (Comma [Space]) $ listToCommaSep as
+listToCommaSep (a:as) = CommaSepMany a (MkComma [Space]) $ listToCommaSep as
 
 -- | Appends two comma separated values together.
 --
@@ -76,8 +77,8 @@ listToCommaSep (a:as) = CommaSepMany a (Comma [Space]) $ listToCommaSep as
 appendCommaSep :: [Whitespace] -> CommaSep a -> CommaSep a -> CommaSep a
 appendCommaSep _  CommaSepNone b = b
 appendCommaSep _  (CommaSepOne a) CommaSepNone = CommaSepOne a
-appendCommaSep ws (CommaSepOne a) (CommaSepOne b) = CommaSepMany a (Comma ws) (CommaSepOne b)
-appendCommaSep ws (CommaSepOne a) (CommaSepMany b c cs) = CommaSepMany a (Comma ws) (CommaSepMany b c cs)
+appendCommaSep ws (CommaSepOne a) (CommaSepOne b) = CommaSepMany a (MkComma ws) (CommaSepOne b)
+appendCommaSep ws (CommaSepOne a) (CommaSepMany b c cs) = CommaSepMany a (MkComma ws) (CommaSepMany b c cs)
 appendCommaSep ws (CommaSepMany a c cs) b = CommaSepMany a c (appendCommaSep ws cs b)
 
 instance Semigroup (CommaSep a) where
@@ -91,7 +92,7 @@ instance Monoid (CommaSep a) where
 data CommaSep1 a
   = CommaSepOne1 a
   | CommaSepMany1 a Comma (CommaSep1 a)
-  deriving (Eq, Show, Functor, Foldable, Traversable)
+  deriving (Eq, Show, Functor, Foldable, Traversable, Generic)
 
 -- | Get the first element of a 'CommaSep1'
 commaSep1Head :: CommaSep1 a -> a
@@ -105,7 +106,7 @@ appendCommaSep1 :: [Whitespace] -> CommaSep1 a -> CommaSep1 a -> CommaSep1 a
 appendCommaSep1 ws a b =
   CommaSepMany1
     (case a of; CommaSepOne1 x -> x;  CommaSepMany1 x _ _  -> x)
-    (case a of; CommaSepOne1 _ -> Comma ws; CommaSepMany1 _ ws' _ -> ws')
+    (case a of; CommaSepOne1 _ -> MkComma ws; CommaSepMany1 _ ws' _ -> ws')
     (case a of; CommaSepOne1 _ -> b;  CommaSepMany1 _ _ x  -> x <> b)
 
 instance Semigroup (CommaSep1 a) where
@@ -131,7 +132,7 @@ listToCommaSep1 (a :| as) = go (a:as)
   where
     go [] = error "impossible"
     go [x] = CommaSepOne1 x
-    go (x:xs) = CommaSepMany1 x (Comma [Space]) $ go xs
+    go (x:xs) = CommaSepMany1 x (MkComma [Space]) $ go xs
 
 -- | Non-empty 'CommaSep', optionally terminated by a comma
 --
@@ -139,7 +140,7 @@ listToCommaSep1 (a :| as) = go (a:as)
 data CommaSep1' a
   = CommaSepOne1' a (Maybe Comma)
   | CommaSepMany1' a Comma (CommaSep1' a)
-  deriving (Eq, Show, Functor, Foldable, Traversable)
+  deriving (Eq, Show, Functor, Foldable, Traversable, Generic)
 
 -- | Iso to unpack a 'CommaSep'
 _CommaSep
@@ -192,7 +193,7 @@ listToCommaSep1' :: [a] -> Maybe (CommaSep1' a)
 listToCommaSep1' [] = Nothing
 listToCommaSep1' [a] = Just (CommaSepOne1' a Nothing)
 listToCommaSep1' (a:as) =
-  CommaSepMany1' a (Comma [Space]) <$> listToCommaSep1' as
+  CommaSepMany1' a (MkComma [Space]) <$> listToCommaSep1' as
 
 instance HasTrailingWhitespace s => HasTrailingWhitespace (CommaSep1' s) where
   trailingWhitespace =
@@ -205,6 +206,6 @@ instance HasTrailingWhitespace s => HasTrailingWhitespace (CommaSep1' s) where
            CommaSepOne1' a b ->
              CommaSepOne1'
                (fromMaybe (a & trailingWhitespace .~ ws) $ b $> coerce a)
-               (b $> Comma ws)
+               (b $> MkComma ws)
            CommaSepMany1' a b c ->
              CommaSepMany1' (coerce a) b (c & trailingWhitespace .~ ws))
