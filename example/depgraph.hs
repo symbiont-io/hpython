@@ -28,6 +28,7 @@ import System.Exit
 import qualified System.FilePath as File
 
 
+--  stak exec depgraph -- ../rex/contracts/loans/loans.py  	../rex/contracts/escrow/escrow.py  	../rex/contracts/amortization/amortization.py  	../rex/contracts/loans_events/loans_events.py  	../rex/contracts/loans_schemas/loans_schemas.py  	../rex/contracts/loans_history/loans_history.py  	../rex/contracts/date/date.py  	../rex/contracts/payments/payments.py  	../rex/contracts/transfer/transfer.py  	../rex/contracts/todos/todos.py  	../rex/contracts/servicing/servicing.py  	../rex/contracts/workflow/workflow.py  	../rex/contracts/documents/documents.py | dot -Tpdf -odeps.pdf
 
 toPython :: String -> String -> Either String (Module '[] SrcInfo)
 toPython fp =  bimap show id . toEither . parseModule' fp . pack
