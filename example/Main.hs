@@ -1,12 +1,11 @@
-{-# language DataKinds #-}
+{-# LANGUAGE DataKinds #-}
 module Main where
 
 import Control.Lens
-import Data.Text.Lazy(unpack)
-import Programs
 import FixMutableDefaultArguments
-import OptimizeTailRecursion
 import Indentation
+import OptimizeTailRecursion
+import Programs
 import Recase
 import Validation
 

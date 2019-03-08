@@ -185,28 +185,6 @@ benchmark bench
   if flag(development)
     ghc-options:       -Werror
 
-
-executable roundtrip
-  main-is:             Roundtrip.hs
-  hs-source-dirs:      example
-  build-depends:       base >=4.9 && <5, lens, hpython, filepath, text, trifecta, validation
-  default-language:    Haskell2010
-  ghc-options:         -O2
-                       -Wincomplete-patterns
-                       -Wincomplete-record-updates
-                       -Wunused-imports
-                       -Werror
-                       -threaded
-
-executable depgraph
-  main-is:             depgraph.hs
-  hs-source-dirs:      example
-  build-depends:       base >=4.9 && <5, containers, lens, hpython, filepath, text, validation
-  default-language:    Haskell2010
-  ghc-options:         -Wall
-                       -Werror
-                       -threaded
-
 test-suite hpython-tests
   main-is:             Main.hs
   type:                exitcode-stdio-1.0
