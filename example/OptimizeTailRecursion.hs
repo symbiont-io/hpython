@@ -1,122 +1,149 @@
-{-# language OverloadedLists, OverloadedStrings #-}
+{-# language OverloadedStrings #-}
 {-# language DataKinds #-}
+{-# language BangPatterns #-}
 module OptimizeTailRecursion where
 
+import Control.Applicative ((<|>))
 import Control.Lens.Cons (_last, _init)
-import Control.Lens.Fold ((^..), (^?), (^?!), allOf, anyOf, folded, foldrOf, toListOf)
-import Control.Lens.Getter ((^.))
+import Control.Lens.Fold ((^..), (^?), (^?!), allOf, anyOf, folded, foldrOf)
+import Control.Lens.Getter ((^.), to)
 import Control.Lens.Plated (cosmos, transform, transformOn)
 import Control.Lens.Prism (_Just)
-import Control.Lens.Setter ((%~), over)
-import Control.Lens.Tuple (_2, _5)
+import Control.Lens.Review ((#))
+import Control.Lens.Setter ((%~), (.~))
+import Control.Lens.Tuple (_2, _3)
 import Data.Foldable (toList)
-import qualified Data.List.NonEmpty as NonEmpty
+import Data.Function ((&))
 import Data.Semigroup ((<>))
 
-import Language.Python.Internal.Optics
-import Language.Python.Internal.Syntax
-import Language.Python.Syntax
+import Language.Python.Optics
+import Language.Python.DSL
+import Language.Python.Syntax.Expr (Expr (..), _Exprs, argExpr, paramName)
+import Language.Python.Syntax.Statement (CompoundStatement (..), Statement (..), SmallStatement (..), SimpleStatement (..), _Statements)
 
-optimizeTailRecursion :: Statement '[] () -> Maybe (Statement '[] ())
+optimizeTailRecursion :: Raw Statement -> Maybe (Raw Statement)
 optimizeTailRecursion st = do
-  (idnts, _, _, name, _, params, _, _, _, body) <- st ^? _Fundef
-  bodyLast <- toListOf (unvalidated._Statements) body ^? _last
+  function <- st ^? _Fundef
+  let functionBody = function ^. body_
+  bodyLast <- lastStatement functionBody
 
   let
-    params' = toList params
-    paramNames = (_identValue . _paramName) <$> params'
+    functionName = function ^. fdName.identValue
+    bodyInit = functionBody ^?! _init
+    paramNames = function ^.. fdParameters.folded.paramName.identValue
 
-  if not $ hasTC (name ^. identValue) bodyLast
+  if not $ hasTC functionName bodyLast
     then Nothing
     else
-      Just .
-      over (_Indents.indentsValue) (idnts ^. indentsValue <>) .
-      def_ name params' . NonEmpty.fromList $
-        zipWith (\a b -> var_ (a <> "__tr") .= var_ b) paramNames paramNames <>
-        [ "__res__tr" .= none_
-        , while_ true_ . NonEmpty.fromList .
-          transformOn (traverse._Exprs) (renameIn paramNames "__tr") $
-            (toListOf (unvalidated._Statements) body ^?! _init) <>
-            looped (name ^. identValue) paramNames bodyLast
-        , return_ "__res__tr"
-        ]
+      Just $
+      _Fundef #
+        (function &
+         body_ .~
+           (zipWith
+              (\a b -> line_ (var_ (a <> "__tr") .= var_ b))
+              paramNames
+              paramNames <>
+
+            [ line_ ("__res__tr" .= none_)
+            , line_ . while_ true_ .
+              transformOn (traverse._Exprs) (renameIn paramNames "__tr") $
+                bodyInit <>
+                looped functionName paramNames bodyLast
+            , line_ $ return_ "__res__tr"
+            ]))
 
   where
-    isTailCall :: String -> Expr '[] () -> Bool
+    lastStatement :: [Raw Line] -> Maybe (Raw Statement)
+    lastStatement = go Nothing
+      where
+        go !res [] = res
+        go !res (a:as) = go (a ^? _Statements <|> res) as
+
+    isTailCall :: String -> Raw Expr -> Bool
     isTailCall name e
-      | anyOf (cosmos._Call._2._Ident._2.identValue) (== name) e
-      = (e ^? _Call._2._Ident._2.identValue) == Just name
+      | anyOf (cosmos._Call.callFunction._Ident.identValue) (== name) e
+      = (e ^? _Call.callFunction._Ident.identValue) == Just name
       | otherwise = False
 
-    hasTC :: String -> Statement '[] () -> Bool
+    hasTC :: String -> Raw Statement -> Bool
     hasTC name st =
       case st of
-        CompoundStatement (If _ _ e _ _ _ sts sts') ->
+        CompoundStatement (If _ _ _ _ sts [] sts') ->
           allOf _last (hasTC name) (sts ^.. _Statements) ||
-          allOf _last (hasTC name) (sts' ^.. _Just._5._Statements)
-        SmallStatements _ s ss _ _ ->
+          allOf _last (hasTC name) (sts' ^.. _Just._3._Statements)
+        SmallStatement _ (MkSmallStatement s ss _ _ _) ->
           case last (s : fmap (^. _2) ss) of
-            Return _ _ e -> isTailCall name e
+            Return _ _ (Just e) -> isTailCall name e
+            -- Return _ _ Nothing -> True
             Expr _ e -> isTailCall name e
             _ -> False
         _ -> False
 
-    renameIn :: [String] -> String -> Expr '[] () -> Expr '[] ()
+    renameIn :: [String] -> String -> Raw Expr -> Raw Expr
     renameIn params suffix =
       transform
-        (_Ident._2.identValue %~ (\a -> if a `elem` params then a <> suffix else a))
+        (_Ident.identValue %~ (\a -> if a `elem` params then a <> suffix else a))
 
-    looped :: String -> [String] -> Statement '[] () -> [Statement '[] ()]
-    looped name params st =
-      case st of
-        CompoundStatement c ->
-          case c of
-            If _ _ _ e _ _ sts sts'
-              | hasTC name st ->
-                  case sts' of
-                    Nothing ->
-                      [ if_ e
-                          (NonEmpty.fromList $
-                          (toListOf _Statements sts ^?! _init) <>
-                          looped name params (toListOf _Statements sts ^?! _last))
-                      ]
-                    Just (_, _, _, _, sts'') ->
-                      [ ifElse_ e
-                          (NonEmpty.fromList $
-                          (toListOf _Statements sts ^?! _init) <>
-                          looped name params (toListOf _Statements sts ^?! _last))
-                          (NonEmpty.fromList $
-                          (toListOf _Statements sts'' ^?! _init) <>
-                          looped name params (toListOf _Statements sts'' ^?! _last))
-                      ]
-            _ -> [st]
-        SmallStatements idnts s ss sc nl ->
+    looped :: String -> [String] -> Raw Statement -> [Raw Line]
+    looped name params st
+      | Just ifSt <- st ^? _If
+      , hasTC name st =
           let
-            initExps = foldr (\_ _ -> init ss) [] ss
-            lastExp =
-              foldrOf (folded._2) (\_ _ -> last ss ^. _2) s ss
-            newSts =
-              case initExps of
-                [] -> []
-                first : rest ->
-                  let
-                    lss = last ss
-                  in
-                    [SmallStatements idnts (first ^. _2) rest sc nl]
+            ifBodyLines = toList $ ifSt ^. body_
           in
-            case lastExp of
-              Return _ _ e ->
-                case e ^? _Call of
-                  Just (_, f, _, args, _)
-                    | Just name' <- f ^? _Ident._2.identValue
-                    , name' == name ->
+            case ifSt ^? to getElse._Just.body_ of
+              Nothing ->
+                [ line_ $
+                  if_ (ifSt ^. ifCond)
+                    ((ifBodyLines ^?! _init) <>
+                     looped name params (ifBodyLines ^?! _last._Statements))
+                ]
+              Just sts'' ->
+                [ line_ $
+                  if_ (ifSt ^. ifCond)
+                    ((ifSt ^?! body_.to toList._init) <>
+                     looped name params (ifBodyLines ^?! _last._Statements)) &
+                  else_
+                    ((toList sts'' ^?! _init) <>
+                     looped name params (toList sts'' ^?! _last._Statements))
+                ]
+      | otherwise =
+          case st of
+            CompoundStatement{} -> [line_ st]
+            SmallStatement idnts (MkSmallStatement s ss sc cmt nl) ->
+              let
+                initExps = foldr (\_ _ -> init ss) [] ss
+                lastExp = foldrOf (folded._2) (\_ _ -> last ss ^. _2) s ss
+                newSts =
+                  case initExps of
+                    [] -> []
+                    first : rest ->
+                      [ line_ $
+                        SmallStatement idnts
+                        (MkSmallStatement (first ^. _2) rest sc cmt nl)
+                      ]
+              in
+                case lastExp of
+                  Return _ _ e ->
+                    case e ^? _Just._Call of
+                      Just call
+                        | Just name' <- call ^? callFunction._Ident.identValue
+                        , name' == name ->
+                            newSts <>
+                            fmap
+                              (\a -> line_ (var_ (a <> "__tr__old") .= var_ (a <> "__tr")))
+                              params <>
+                            zipWith
+                              (\a b -> line_ (var_ (a <> "__tr") .= b))
+                              params
+                              (transformOn
+                                traverse
+                                (renameIn params "__tr__old")
+                                (call ^.. callArguments.folded.folded.argExpr))
+                      _ ->
                         newSts <>
-                        fmap (\a -> var_ (a <> "__tr__old") .= (var_ $ a <> "__tr")) params <>
-                        zipWith
-                          (\a b -> var_ (a <> "__tr") .= b)
-                          params
-                          (transformOn traverse (renameIn params "__tr__old") $ args ^.. folded.argExpr)
-                  _ -> newSts <> [ "__res__tr" .= e, break_ ]
-              Expr _ e
-                | isTailCall name e -> newSts <> [pass_]
-              _ -> [st]
+                        maybe [] (\e' -> [ line_ ("__res__tr" .= e') ]) e <>
+                        [ line_ break_ ]
+                  Expr _ e
+                    | isTailCall name e -> newSts <> [line_ pass_]
+                  _ -> [line_ st]

@@ -1,192 +1,117 @@
-{-# language OverloadedStrings, OverloadedLists #-}
+{-# language OverloadedStrings, OverloadedLists, TemplateHaskell #-}
 module LexerParser (lexerParserTests) where
 
-import Data.Functor.Alt ((<!>))
-import qualified Data.Functor.Alt as Alt (many)
 import Hedgehog
+import Control.Monad (void)
+import Data.List.NonEmpty (NonEmpty(..))
+import qualified Data.Text as Text
 
-import Language.Python.Internal.Lexer
-import Language.Python.Internal.Parse
-import Language.Python.Internal.Render
-import Language.Python.Internal.Syntax.Whitespace
-import Language.Python.Internal.Token
+import Language.Python.DSL
+import Language.Python.Render
+import Language.Python.Parse (parseModule, parseStatement, parseExpr, parseExprList)
+import Language.Python.Syntax.Ann
+import Language.Python.Syntax.CommaSep (CommaSep(..), Comma(..))
+import Language.Python.Syntax.Expr (Expr(..))
+import Language.Python.Syntax.Strings
+  ( StringLiteral(..), StringType(..), QuoteType(..), PyChar(..)
+  , RawBytesPrefix(..), RawStringPrefix(..)
+  )
+import Language.Python.Syntax.Whitespace (Whitespace(..))
 
-import Helpers (doToPython, doParse, doNested, doTokenize, doIndentation)
+import Helpers (shouldBeParseSuccess, shouldBeParseFailure)
 
 lexerParserTests :: Group
-lexerParserTests =
-  Group "Lexer/Parser tests"
-  [ ("Test parse 1", test_parse_1)
-  , ("Test parse 2", test_parse_2)
-  , ("Test full trip 1", test_fulltrip_1)
-  , ("Test full trip 2", test_fulltrip_2)
-  , ("Test full trip 3", test_fulltrip_3)
-  , ("Test full trip 4", test_fulltrip_4)
-  , ("Test full trip 5", test_fulltrip_5)
-  , ("Test full trip 6", test_fulltrip_6)
-  , ("Test full trip 7", test_fulltrip_7)
-  , ("Test full trip 8", test_fulltrip_8)
-  , ("Test full trip 9", test_fulltrip_9)
-  , ("Test full trip 10", test_fulltrip_10)
-  , ("Test full trip 11", test_fulltrip_11)
-  , ("Test full trip 12", test_fulltrip_12)
-  , ("Test full trip 13", test_fulltrip_13)
-  ]
+lexerParserTests = $$discover
 
-test_fulltrip_1 :: Property
-test_fulltrip_1 =
+prop_fulltrip_1 :: Property
+prop_fulltrip_1 =
   withTests 1 . property $ do
     let str = "def a(x, y=2, *z, **w):\n   return 2 + 3"
-    a <- doToPython statement str
-    showStatement a === str
 
-test_fulltrip_2 :: Property
-test_fulltrip_2 =
+    tree <- shouldBeParseSuccess parseStatement str
+
+    showStatement tree === str
+
+prop_fulltrip_2 :: Property
+prop_fulltrip_2 =
   withTests 1 . property $ do
     let str = "(   1\n       *\n  3\n    )"
-    a <- doToPython (expr space) str
-    showExpr a === str
 
-test_fulltrip_3 :: Property
-test_fulltrip_3 =
+    tree <- shouldBeParseSuccess parseExpr str
+
+    showExpr tree === str
+
+prop_fulltrip_3 :: Property
+prop_fulltrip_3 =
   withTests 1 . property $ do
     let str = "pass;"
-    a <- doToPython statement str
-    showStatement a === str
 
-test_fulltrip_4 :: Property
-test_fulltrip_4 =
+    tree <- shouldBeParseSuccess parseStatement str
+
+    showStatement tree === str
+
+prop_fulltrip_4 :: Property
+prop_fulltrip_4 =
   withTests 1 . property $ do
     let str = "def a():\n pass\n #\n pass\n"
 
-    tks <- doTokenize str
-    annotateShow tks
+    tree <- shouldBeParseSuccess parseStatement str
 
-    let lls = logicalLines tks
-    length lls === 4
-    annotateShow lls
+    showStatement tree === str
 
-    ils <- doIndentation lls
-    annotateShow ils
-
-    nst <- doNested ils
-    annotateShow nst
-
-    a <- doToPython statement str
-    showStatement a === str
-
-test_fulltrip_5 :: Property
-test_fulltrip_5 =
+prop_fulltrip_5 :: Property
+prop_fulltrip_5 =
   withTests 1 . property $ do
     let str = "if False:\n pass\n pass\nelse:\n pass\n pass\n"
 
-    tks <- doTokenize str
-    annotateShow tks
+    tree <- shouldBeParseSuccess parseStatement str
 
-    let lls = logicalLines tks
-    length lls === 6
-    annotateShow lls
+    showStatement tree === str
 
-    ils <- doIndentation lls
-    annotateShow ils
-
-    nst <- doNested ils
-    annotateShow nst
-
-    a <- doToPython statement str
-    showStatement a === str
-
-test_fulltrip_6 :: Property
-test_fulltrip_6 =
+prop_fulltrip_6 :: Property
+prop_fulltrip_6 =
   withTests 1 . property $ do
     let str = "# blah\ndef boo():\n    pass\n       #bing\n    #   bop\n"
 
-    tks <- doTokenize str
-    annotateShow tks
+    tree <- shouldBeParseSuccess parseModule str
 
-    let lls = logicalLines tks
-    length lls === 5
-    annotateShow lls
+    showModule tree === str
 
-    ils <- doIndentation lls
-    annotateShow ils
-
-    nst <- doNested ils
-    annotateShow nst
-
-    a <- doToPython module_ str
-    showModule a === str
-
-test_fulltrip_7 :: Property
-test_fulltrip_7 =
+prop_fulltrip_7 :: Property
+prop_fulltrip_7 =
   withTests 1 . property $ do
     let str = "if False:\n pass\nelse \\\n      \\\r\n:\n pass\n"
 
-    tks <- doTokenize str
-    annotateShow tks
+    tree <- shouldBeParseSuccess parseModule str
 
-    let lls = logicalLines tks
-    annotateShow lls
+    showModule tree === str
 
-    ils <- doIndentation lls
-    annotateShow ils
-
-    nst <- doNested ils
-    annotateShow nst
-
-    a <- doToPython module_ str
-    showModule a === str
-
-test_fulltrip_8 :: Property
-test_fulltrip_8 =
+prop_fulltrip_8 :: Property
+prop_fulltrip_8 =
   withTests 1 . property $ do
     let str = "def a():\n \n pass\n pass\n"
 
-    tks <- doTokenize str
-    annotateShow tks
+    tree <- shouldBeParseSuccess parseModule str
 
-    let lls = logicalLines tks
-    annotateShow lls
+    showModule tree === str
 
-    ils <- doIndentation lls
-    annotateShow ils
-
-    nst <- doNested ils
-    annotateShow nst
-
-    a <- doToPython module_ str
-    showModule a === str
-
-test_fulltrip_9 :: Property
-test_fulltrip_9 =
+prop_fulltrip_9 :: Property
+prop_fulltrip_9 =
   withTests 1 . property $ do
     let
       str =
         "try:\n pass\nexcept False:\n pass\nelse:\n pass\nfinally:\n pass\n def a():\n  pass\n pass\n"
 
-    tks <- doTokenize str
-    annotateShow tks
+    tree <- shouldBeParseSuccess parseModule str
 
-    let lls = logicalLines tks
-    annotateShow lls
+    showModule tree === str
 
-    ils <- doIndentation lls
-    annotateShow ils
-
-    nst <- doNested ils
-    annotateShow nst
-
-    a <- doParse module_ nst
-    annotateShow a
-
-    showModule a === str
-
-test_fulltrip_10 :: Property
-test_fulltrip_10 =
+prop_fulltrip_10 :: Property
+prop_fulltrip_10 =
   withTests 1 . property $ do
     let
       str =
-        unlines
+        Text.unlines
         [ "from blah import  boo"
         , "import baz   as wop"
         , ""
@@ -200,29 +125,16 @@ test_fulltrip_10 =
         , "    pass"
         ]
 
-    tks <- doTokenize str
-    annotateShow $! tks
+    tree <- shouldBeParseSuccess parseModule str
 
-    let lls = logicalLines tks
-    annotateShow $! lls
+    showModule tree === str
 
-    ils <- doIndentation lls
-    annotateShow $! ils
-
-    nst <- doNested ils
-    annotateShow $! nst
-
-    a <- doParse module_ nst
-    annotateShow $! a
-
-    showModule a === str
-
-test_fulltrip_11 :: Property
-test_fulltrip_11 =
+prop_fulltrip_11 :: Property
+prop_fulltrip_11 =
   withTests 1 . property $ do
     let
       str =
-        unlines
+        Text.unlines
         [ "if False:"
         , " pass"
         , " pass"
@@ -231,29 +143,16 @@ test_fulltrip_11 =
         , " \tpass"
         ]
 
-    tks <- doTokenize str
-    annotateShow $! tks
+    tree <- shouldBeParseSuccess parseModule str
 
-    let lls = logicalLines tks
-    annotateShow $! lls
+    showModule tree === str
 
-    ils <- doIndentation lls
-    annotateShow $! ils
-
-    nst <- doNested ils
-    annotateShow $! nst
-
-    a <- doParse module_ nst
-    annotateShow $! a
-
-    showModule a === str
-
-test_fulltrip_12 :: Property
-test_fulltrip_12 =
+prop_fulltrip_12 :: Property
+prop_fulltrip_12 =
   withTests 1 . property $ do
     let
       str =
-        unlines
+        Text.unlines
         [ "try:"
         , " \tpass"
         , " \tdef a():"
@@ -263,29 +162,16 @@ test_fulltrip_12 =
         , " pass"
         ]
 
-    tks <- doTokenize str
-    annotateShow $! tks
+    tree <- shouldBeParseSuccess parseModule str
 
-    let lls = logicalLines tks
-    annotateShow $! lls
+    showModule tree === str
 
-    ils <- doIndentation lls
-    annotateShow $! ils
-
-    nst <- doNested ils
-    annotateShow $! nst
-
-    a <- doParse module_ nst
-    annotateShow $! a
-
-    showModule a === str
-
-test_fulltrip_13 :: Property
-test_fulltrip_13 =
+prop_fulltrip_13 :: Property
+prop_fulltrip_13 =
   withTests 1 . property $ do
     let
       str =
-        unlines
+        Text.unlines
         [ "if []:"
         , " False"
         , " def a():"
@@ -297,72 +183,362 @@ test_fulltrip_13 =
         , " pass"
         ]
 
-    tks <- doTokenize str
-    annotateShow $! tks
+    tree <- shouldBeParseSuccess parseModule str
 
-    let lls = logicalLines tks
-    annotateShow $! lls
+    showModule tree === str
 
-    ils <- doIndentation lls
-    annotateShow $! ils
-
-    nst <- doNested ils
-    annotateShow $! nst
-
-    a <- doParse module_ nst
-    annotateShow $! a
-
-    showModule a === str
-
-parseTab :: Parser ann Whitespace
-parseTab = do
-  curTk <- currentToken
-  case curTk of
-    TkTab{} -> pure Tab
-    _ -> parseError $ ExpectedToken (TkTab ()) curTk
-
-parseSpace :: Parser ann Whitespace
-parseSpace = do
-  curTk <- currentToken
-  case curTk of
-    TkSpace{} -> pure Space
-    _ -> parseError $ ExpectedToken (TkSpace ()) curTk
-
-test_parse_1 :: Property
-test_parse_1 =
+prop_fulltrip_14 :: Property
+prop_fulltrip_14 =
   withTests 1 . property $ do
     let
-      line =
-        [ IndentedLine
-            LogicalLine
-            { llAnn = ()
-            , llSpaces = []
-            , llLine = [ TkTab () ]
-            , llEnd = Nothing
-            }
-        ]
+      str = "not ((False for a in False) if False else False or False)"
 
-    nested <- doNested line
+    tree <- shouldBeParseSuccess parseModule str
 
-    res <- doParse (parseSpace <!> parseTab) nested
-    case res of
-      Tab -> success
-      _ -> annotateShow res *> failure
+    showModule tree === str
 
-test_parse_2 :: Property
-test_parse_2 =
+prop_fulltrip_15 :: Property
+prop_fulltrip_15 =
   withTests 1 . property $ do
     let
-      line =
-        [ IndentedLine
-            LogicalLine
-            { llAnn = ()
-            , llSpaces = []
-            , llLine = [ TkSpace (), TkSpace (), TkSpace (), TkSpace () ]
-            , llEnd = Nothing
-            }
-        ]
+      str = "01."
 
-    nested <- doNested line
+    tree <- shouldBeParseSuccess parseModule str
 
-    () <$ doParse (Alt.many space) nested
+    showModule tree === str
+
+prop_fulltrip_16 :: Property
+prop_fulltrip_16 =
+  withTests 1 . property $ do
+    let
+      str = "def a():\n  return ~i"
+
+    tree <- shouldBeParseSuccess parseModule str
+
+    showModule tree === str
+
+prop_fulltrip_17 :: Property
+prop_fulltrip_17 =
+  withTests 1 . property $ do
+    let str = "r\"\\\"\""
+
+    tree <- shouldBeParseSuccess parseModule str
+
+    showModule tree === str
+
+prop_fulltrip_18 :: Property
+prop_fulltrip_18 =
+  withTests 1 . property $ do
+    let str = "\"\0\""
+
+    tree <- shouldBeParseSuccess parseModule str
+
+    showModule tree === str
+
+prop_fulltrip_19 :: Property
+prop_fulltrip_19 =
+  withTests 1 . property $ do
+    let str = " \\\n"
+
+    shouldBeParseFailure parseModule str
+
+prop_fulltrip_20 :: Property
+prop_fulltrip_20 =
+  withTests 1 . property $ do
+    let str = " pass"
+
+    shouldBeParseFailure parseModule str
+
+prop_fulltrip_21 :: Property
+prop_fulltrip_21 =
+  withTests 1 . property $ do
+    let str = "if a:\n  \\\n\n  pass"
+
+    shouldBeParseFailure parseModule str
+
+prop_fulltrip_22 :: Property
+prop_fulltrip_22 =
+  withTests 1 . property $ do
+    let str = "for a in (b, *c): pass"
+
+    void $ shouldBeParseSuccess parseModule str
+
+prop_fulltrip_23 :: Property
+prop_fulltrip_23 =
+  withTests 1 . property $ do
+    let str = "None,*None"
+
+    void $ shouldBeParseSuccess parseModule str
+
+prop_fulltrip_24 :: Property
+prop_fulltrip_24 =
+  withTests 1 . property $ do
+    let str = "'\1'"
+
+    void $ shouldBeParseSuccess parseModule str
+
+prop_fulltrip_25 :: Property
+prop_fulltrip_25 =
+  withTests 1 . property $ do
+    let str = "'\11'"
+
+    void $ shouldBeParseSuccess parseModule str
+
+prop_fulltrip_26 :: Property
+prop_fulltrip_26 =
+  withTests 1 . property $ do
+    let str =
+          showExpr $
+          String (Ann ())
+            (pure $
+             RawBytesLiteral (Ann ())
+               Prefix_br
+               LongString
+               SingleQuote
+               [ Char_esc_bslash ]
+               [])
+    annotateShow str
+
+    res <- shouldBeParseSuccess parseExpr str
+    str === showExpr (() <$ res)
+
+prop_fulltrip_27 :: Property
+prop_fulltrip_27 =
+  withTests 1 . property $ do
+    let str =
+          showExpr $
+          String (Ann ())
+            (pure $
+             RawStringLiteral (Ann ())
+               Prefix_r
+               LongString
+               SingleQuote
+               [ Char_lit '\\', Char_lit '\\', Char_lit '\\', Char_lit '\'' ]
+               [])
+    annotateShow str
+
+    res <- shouldBeParseSuccess parseExpr str
+    str === showExpr (() <$ res)
+
+prop_fulltrip_28 :: Property
+prop_fulltrip_28 =
+  withTests 1 . property $ do
+    let str =
+          showExpr $
+          String (Ann ())
+            (pure $
+             RawStringLiteral (Ann ())
+               Prefix_r
+               ShortString
+               DoubleQuote
+               [ Char_lit '\\' ]
+               [])
+    annotateShow str
+
+    res <- shouldBeParseSuccess parseExpr str
+    str === showExpr (() <$ res)
+
+prop_fulltrip_29 :: Property
+prop_fulltrip_29 =
+  withTests 1 . property $ do
+    let str =
+          showExpr $
+          String (Ann ())
+            (pure $
+             RawStringLiteral (Ann ())
+               Prefix_r
+               ShortString
+               DoubleQuote
+               [ Char_lit '\\', Char_lit '\\' ]
+               [])
+    annotateShow str
+
+    res <- shouldBeParseSuccess parseExpr str
+    str === showExpr (() <$ res)
+
+prop_fulltrip_30 :: Property
+prop_fulltrip_30 =
+  withTests 1 . property $ do
+    let str =
+          showExpr $
+          String (Ann ())
+            (pure $
+             RawStringLiteral (Ann ())
+               Prefix_r
+               ShortString
+               DoubleQuote
+               [ Char_lit '\\', Char_lit '\\', Char_lit '\\' ]
+               [])
+    annotateShow str
+
+    res <- shouldBeParseSuccess parseExpr str
+    str === showExpr (() <$ res)
+
+prop_fulltrip_31 :: Property
+prop_fulltrip_31 =
+  withTests 1 . property $ do
+    let str = "del(a)"
+
+    void $ shouldBeParseSuccess parseModule str
+
+prop_fulltrip_32 :: Property
+prop_fulltrip_32 =
+  withTests 1 . property $ do
+    let str =
+          showExpr $
+          String (Ann ())
+            (pure $
+             RawStringLiteral (Ann ())
+               Prefix_r
+               LongString
+               DoubleQuote
+               [ Char_lit ' ', Char_lit '"' ]
+               [])
+    annotateShow str
+
+    res <- shouldBeParseSuccess parseExpr str
+    str === showExpr (() <$ res)
+
+prop_fulltrip_33 :: Property
+prop_fulltrip_33 =
+  withTests 1 . property $ do
+    let str =
+          showExpr $
+          String (Ann ())
+            (pure $
+             RawStringLiteral (Ann ())
+               Prefix_r
+               LongString
+               DoubleQuote
+               [ Char_lit '"', Char_lit ' ' ]
+               [])
+    annotateShow str
+
+    res <- shouldBeParseSuccess parseExpr str
+    str === showExpr (() <$ res)
+
+prop_fulltrip_34 :: Property
+prop_fulltrip_34 =
+  withTests 1 . property $ do
+    let str =
+          showExpr $
+          String (Ann ())
+            (pure $
+             RawStringLiteral (Ann ())
+               Prefix_r
+               LongString
+               DoubleQuote
+               [ Char_lit '"' ]
+               [])
+    annotateShow str
+
+    res <- shouldBeParseSuccess parseExpr str
+    str === showExpr (() <$ res)
+
+prop_fulltrip_35 :: Property
+prop_fulltrip_35 =
+  withTests 1 . property $ do
+    let str =
+          showExpr $
+          String (Ann ())
+            (pure $
+             RawStringLiteral (Ann ())
+               Prefix_r
+               LongString
+               DoubleQuote
+               [ Char_lit '\\'
+               , Char_esc_bslash
+               , Char_esc_doublequote
+               ]
+               [])
+    annotateShow str
+
+    res <- shouldBeParseSuccess parseExpr str
+    str === showExpr (() <$ res)
+
+prop_fulltrip_36 :: Property
+prop_fulltrip_36 =
+  withTests 1 . property $ do
+    let str =
+          showExpr $
+          String (Ann ())
+            (RawStringLiteral (Ann ())
+               Prefix_r
+               LongString
+               SingleQuote
+               [Char_lit '\\', Char_esc_bslash] [] :|
+            [])
+    annotateShow str
+
+    res <- shouldBeParseSuccess parseExpr str
+    str === showExpr (() <$ res)
+
+prop_fulltrip_37 :: Property
+prop_fulltrip_37 =
+  withTests 1 . property $ do
+    let str = "None,*None"
+
+    void $ shouldBeParseSuccess parseExprList str
+
+prop_fulltrip_38 :: Property
+prop_fulltrip_38 =
+  withTests 1 . property $ do
+    let str =
+          showExpr $
+          String (Ann ())
+            (RawStringLiteral (Ann ())
+               Prefix_r
+               LongString
+               SingleQuote
+               [Char_esc_bslash, Char_lit '\\'] [] :|
+            [])
+    annotateShow str
+
+    res <- shouldBeParseSuccess parseExpr str
+    str === showExpr (() <$ res)
+
+prop_fulltrip_39 :: Property
+prop_fulltrip_39 =
+  withTests 1 . property $ do
+    let str = "def a(*b, *): pass"
+
+    shouldBeParseFailure parseStatement str
+
+prop_fulltrip_40 :: Property
+prop_fulltrip_40 =
+  withTests 1 . property $ do
+    let str = "def a():\n    yield op, oparg"
+    res <- shouldBeParseSuccess parseStatement str
+    str === showStatement (() <$ res)
+
+prop_fulltrip_41 :: Property
+prop_fulltrip_41 =
+  withTests 1 . property $ do
+    let
+      s = "def a(*a, *b): pass"
+    shouldBeParseFailure parseModule s
+
+prop_fulltrip_42 :: Property
+prop_fulltrip_42 =
+  withTests 1 . property $ do
+    let
+      s = "lambda *a, *b: pass"
+    shouldBeParseFailure parseModule s
+
+prop_fulltrip_43 :: Property
+prop_fulltrip_43 =
+  withTests 1 . property $ do
+    let
+      e =
+        Yield
+        { _unsafeExprAnn = Ann ()
+        , _unsafeYieldWhitespace = [Space]
+        , _unsafeYieldValue =
+            CommaSepMany (Ident (Ann ()) (MkIdent (Ann ()) "a" [])) (MkComma [Space]) $
+            CommaSepMany (tuple_ [ti_ $ var_ "b"]) (MkComma []) $
+            CommaSepNone
+        }
+      -- yield a, (b,),
+      str = showExpr e
+    res <- shouldBeParseSuccess parseExpr str
+    str === showExpr (() <$ res)

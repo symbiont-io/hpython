@@ -1,204 +1,513 @@
 {-# language BangPatterns #-}
-{-# language OverloadedLists #-}
 {-# language TypeApplications #-}
-{-# language MultiParamTypeClasses #-}
+{-# language FunctionalDependencies, MultiParamTypeClasses #-}
 {-# language GeneralizedNewtypeDeriving #-}
-module Language.Python.Internal.Lexer where
+{-# language FlexibleContexts #-}
+{-# language TypeFamilies #-}
+{-# language OverloadedStrings #-}
+{-# language LambdaCase #-}
 
-import Control.Applicative ((<|>), some, many, optional)
-import Control.Lens.Iso (from)
+{-|
+Module      : Language.Python.Internal.Lexer
+Copyright   : (C) CSIRO 2017-2019
+License     : BSD3
+Maintainer  : Isaac Elliott <isaace71295@gmail.com>
+Stability   : experimental
+Portability : non-portable
+-}
+
+module Language.Python.Internal.Lexer
+  ( tokenizeWithTabs
+    -- * Source Information
+  , SrcInfo(..), initialSrcInfo, withSrcInfo
+    -- * Errors
+  , AsLexicalError(..), unsafeFromLexicalError
+  , AsTabError(..), AsIncorrectDedent(..), fromTabError, TabError(..)
+    -- * Miscellaneous
+  , tokenize
+  , insertTabs
+    -- * Megaparsec re-exports
+  , Parsec.ParseError(..)
+  )
+where
+
+import Control.Applicative ((<|>), many, optional)
 import Control.Lens.Getter ((^.))
-import Control.Monad (when, replicateM)
+import Control.Lens.Iso (from)
+import Control.Lens.Prism (Prism')
+import Control.Lens.Review ((#))
+import Control.Monad ((<=<), when, replicateM)
 import Control.Monad.Except (throwError)
 import Control.Monad.State (StateT, evalStateT, get, modify, put)
 import Data.Bifunctor (first)
-import Data.Char (chr, isAscii)
+import Data.Digit.Binary (parseBinary)
+import Data.Digit.Class.D0 (parse0)
+import Data.Digit.Decimal (parseDecimal, parseDecimalNoZero)
+import Data.Digit.Hexadecimal.MixedCase (parseHeXaDeCiMaL)
+import Data.Digit.Octal (parseOctal)
 import Data.FingerTree (FingerTree, Measured(..))
 import Data.Foldable (asum)
-import Data.Functor (($>))
-import Data.List.NonEmpty (NonEmpty(..))
+import Data.Functor.Identity (Identity)
+import Data.List.NonEmpty (NonEmpty(..), some1)
 import Data.Monoid (Sum(..))
-import Data.Semigroup ((<>))
-import Data.Sequence ((!?), (|>), Seq)
-import Text.Parser.LookAhead (LookAheadParsing, lookAhead)
-import Text.Trifecta
-  ( CharParsing, DeltaParsing, Caret, Careted(..), char, careted, noneOf
-  , digit, string, manyTill, parseString, unexpected, oneOf, satisfy, try
-  , notFollowedBy
+import Data.Set (Set)
+import Data.Semigroup (Semigroup, (<>))
+import Data.Semigroup.Foldable (foldMap1)
+import Data.These (These(..))
+import Data.Void (Void)
+import GHC.Stack (HasCallStack)
+import Text.Megaparsec (MonadParsec, ParseError, parse, unPos)
+import Text.Megaparsec.Parsers
+  ( ParsecT, CharParsing, LookAheadParsing, lookAhead, unParsecT, satisfy, text
+  , char, manyTill, try
+  , notFollowedBy, anyChar, digit, oneOf
   )
 
 import qualified Data.FingerTree as FingerTree
 import qualified Data.List.NonEmpty as NonEmpty
-import qualified Text.Trifecta as Trifecta
+import qualified Data.Text as Text
+import qualified Text.Megaparsec as Parsec
 
-import Language.Python.Internal.Syntax (StringPrefix(..), isIdentifierStart, isIdentifierChar)
-import Language.Python.Internal.Syntax.Whitespace
-  ( Newline(..), Whitespace(..), Indent(..), indentWhitespaces
-  , getIndentLevel, indentLevel
-  , absoluteIndentLevel
-  )
-import Language.Python.Internal.Token (PyToken(..), QuoteType(..), pyTokenAnn)
+import Language.Python.Internal.Token (PyToken(..), pyTokenAnn)
+import Language.Python.Syntax.Ann
+import Language.Python.Syntax.Comment
+import Language.Python.Syntax.Ident
+import Language.Python.Syntax.Numbers
+import Language.Python.Syntax.Strings
+import Language.Python.Syntax.Whitespace
 
-parseNewline :: CharParsing m => m Newline
-parseNewline =
-  char '\n' $> LF <|>
-  char '\r' *> (char '\n' $> CRLF <|> pure CR)
+data SrcInfo
+  = SrcInfo
+  { _srcInfoName :: FilePath
+  , _srcInfoLineStart :: !Int
+  , _srcInfoLineEnd :: !Int
+  , _srcInfoColStart :: !Int
+  , _srcInfoColEnd :: !Int
+  , _srcInfoOffsetStart :: !Int
+  , _srcInfoOffsetEnd :: !Int
+  }
+  deriving (Eq, Show)
 
-stringPrefix :: CharParsing m => m StringPrefix
-stringPrefix =
-  (char 'r' *> (char 'b' $> Prefix_rb <|> char 'B' $> Prefix_rB <|> pure Prefix_r)) <|>
-  (char 'R' *> (char 'b' $> Prefix_Rb <|> char 'B' $> Prefix_RB <|> pure Prefix_R)) <|>
-  (char 'b' *> (char 'r' $> Prefix_br <|> char 'R' $> Prefix_bR <|> pure Prefix_b)) <|>
-  (char 'B' *> (char 'r' $> Prefix_Br <|> char 'R' $> Prefix_BR <|> pure Prefix_B)) <|>
-  (char 'u' $> Prefix_u) <|>
-  (char 'U' $> Prefix_U)
+instance Semigroup SrcInfo where
+  SrcInfo _ ls le cs ce os oe <> SrcInfo n' ls' le' cs' ce' os' oe' =
+    SrcInfo n' (min ls ls') (max le le') (min cs cs') (max ce ce') (min os os') (max oe oe')
 
-hexDigitInt :: Char -> Int
-hexDigitInt c =
-  case c of
-    '0' -> 0
-    '1' -> 1
-    '2' -> 2
-    '3' -> 3
-    '4' -> 4
-    '5' -> 5
-    '6' -> 6
-    '7' -> 7
-    '8' -> 8
-    '9' -> 9
-    'A' -> 10
-    'B' -> 11
-    'C' -> 12
-    'D' -> 13
-    'E' -> 14
-    'F' -> 15
-    _ -> error "impossible"
+initialSrcInfo :: FilePath -> SrcInfo
+initialSrcInfo fp = SrcInfo fp 0 0 0 0 0 0
 
-hexToInt :: String -> Int
-hexToInt =
-  (snd $!) .
-  foldr (\a (sz, val) -> (sz+1, hexDigitInt a * 16 ^ sz + val)) (0, 0)
+{-# inline withSrcInfo #-}
+withSrcInfo :: MonadParsec e s m => m (SrcInfo -> a) -> m a
+withSrcInfo m =
+  (\(Parsec.SourcePos name l c) o f (Parsec.SourcePos _ l' c') o' ->
+     f $ SrcInfo name (unPos l) (unPos l') (unPos c) (unPos c') o o') <$>
+  Parsec.getPosition <*>
+  Parsec.getTokensProcessed <*>
+  m <*>
+  Parsec.getPosition <*>
+  Parsec.getTokensProcessed
 
-stringChar :: (CharParsing m, Monad m) => m Char
-stringChar = (char '\\' *> (escapeChar <|> hexChar)) <|> other
+newline :: CharParsing m => m Newline
+newline = LF <$ char '\n' <|> char '\r' *> (CRLF <$ char '\n' <|> pure CR)
+
+parseNewline :: (CharParsing m, Monad m) => m (SrcInfo -> PyToken SrcInfo)
+parseNewline = TkNewline <$> newline
+
+parseComment :: (CharParsing m, Monad m) => m (SrcInfo -> PyToken SrcInfo)
+parseComment =
+  (\a b -> TkComment (MkComment (Ann b) a)) <$ char '#' <*>
+  many (satisfy (`notElem` ['\r', '\n']))
+
+stringOrBytesPrefix
+  :: CharParsing m
+  => m (Either
+          (Either RawStringPrefix StringPrefix)
+          (Either RawBytesPrefix BytesPrefix))
+stringOrBytesPrefix =
+  (char 'r' *>
+   (Right (Left Prefix_rb) <$ char 'b' <|>
+    Right (Left Prefix_rB) <$ char 'B' <|>
+    pure (Left $ Left Prefix_r))) <|>
+  (char 'R' *>
+   (Right (Left Prefix_Rb) <$ char 'b' <|>
+    Right (Left Prefix_RB) <$ char 'B' <|>
+    pure (Left $ Left Prefix_R))) <|>
+  (char 'b' *>
+   (Right (Left Prefix_br) <$ char 'r' <|>
+    Right (Left Prefix_bR) <$ char 'R' <|>
+    pure (Right $ Right Prefix_b))) <|>
+  (char 'B' *>
+   (Right (Left Prefix_Br) <$ char 'r' <|>
+    Right (Left Prefix_BR) <$ char 'R' <|>
+    pure (Right $ Right Prefix_B))) <|>
+  (Left (Right Prefix_u) <$ char 'u') <|>
+  (Left (Right Prefix_U) <$ char 'U')
+
+rawStringChar :: CharParsing m => m [PyChar]
+rawStringChar =
+  (\a -> [Char_lit '\\', Char_lit a]) <$ char '\\' <*> anyChar <|>
+  pure . Char_lit <$> anyChar
+
+stringChar :: (CharParsing m, LookAheadParsing m) => m PyChar
+stringChar =
+  (try (char '\\' <* lookAhead (oneOf "\"'U\\abfntuvx01234567")) *>
+   (escapeChar <|> unicodeChar <|> octChar <|> hexChar)) <|>
+  other
   where
-    other = satisfy isAscii
+    other = Char_lit <$> anyChar
     escapeChar =
       asum @[]
-      [ char '\\'
-      , char '\''
-      , char '"'
-      , char 'a' $> '\a'
-      , char 'b' $> '\b'
-      , char 'f' $> '\f'
-      , char 'n' $> '\n'
-      , char 'r' $> '\r'
-      , char 't' $> '\t'
-      , char 'v' $> '\v'
+      [ Char_esc_bslash <$ char '\\'
+      , Char_esc_singlequote <$ char '\''
+      , Char_esc_doublequote <$ char '"'
+      , Char_esc_a <$ char 'a'
+      , Char_esc_b <$ char 'b'
+      , Char_esc_f <$ char 'f'
+      , char 'n' *> (Char_newline <$ text "ewline" <|> pure Char_esc_n)
+      , Char_esc_r <$ char 'r'
+      , Char_esc_t <$ char 't'
+      , Char_esc_v <$ char 'v'
       ]
 
-    hexChar =
+    unicodeChar =
       char 'U' *>
-      (hexToInt <$> replicateM 8 (oneOf "0123456789ABCDEF") >>=
-       \a ->
-         if a <= 0x10FFFF
-         then pure (chr a)
-         else unexpected $ "value: " <> show a <> " outside unicode range")
+      ((\[a, b, c, d, e, f, g, h] -> Char_uni32 a b c d e f g h) <$>
+       replicateM 8 parseHeXaDeCiMaL)
+      <|>
+      char 'u' *>
+      ((\[a, b, c, d] -> Char_uni16 a b c d) <$>
+       replicateM 4 parseHeXaDeCiMaL)
 
-parseToken :: (DeltaParsing m, LookAheadParsing m) => m (PyToken Caret)
+    hexChar = Char_hex <$ char 'x' <*> parseHeXaDeCiMaL <*> parseHeXaDeCiMaL
+    octChar =
+      (\a b c ->
+         maybe
+           (Char_octal1 a)
+           (\b' -> maybe (Char_octal2 a b') (Char_octal3 a b') c)
+           b) <$>
+      parseOctal <*>
+      optional parseOctal <*>
+      optional parseOctal
+
+number :: (CharParsing m, Monad m) => m (a -> PyToken a)
+number = do
+  zero <- optional parse0
+  case zero of
+    Nothing -> do
+      nn <- optional $ (:|) <$> parseDecimalNoZero <*> many parseDecimal
+      case nn of
+        Just n ->
+          (\x j ann ->
+             case x of
+               Nothing ->
+                 maybe
+                   (TkInt $ IntLiteralDec (Ann ann) n)
+                   (TkImag . ImagLiteralInt (Ann ann) n) j
+               Just (Right e) ->
+                 let
+                   f = FloatLiteralWhole (Ann ann) n e
+                 in
+                   maybe (TkFloat f) (TkImag . ImagLiteralFloat (Ann ann) f) j
+               Just (Left (Left e)) ->
+                 let
+                   f = FloatLiteralFull (Ann ann) n (Just (That e))
+                 in
+                   maybe (TkFloat f) (TkImag . ImagLiteralFloat (Ann ann) f) j
+               Just (Left (Right (a, b))) ->
+                 let
+                   f = FloatLiteralFull (Ann ann) n $
+                     case (a, b) of
+                       (Nothing, Nothing) -> Nothing
+                       (Just x, Nothing) -> Just $ This x
+                       (Nothing, Just x) -> Just $ That x
+                       (Just x, Just y) -> Just $ These x y
+                 in
+                   maybe (TkFloat f) (TkImag . ImagLiteralFloat (Ann ann) f) j) <$>
+          optional
+            (Left <$ char '.' <*>
+             (Left <$> floatExp <|>
+              Right <$> ((,) <$> optional (some1 parseDecimal) <*> optional floatExp)) <|>
+             Right <$> floatExp) <*>
+          optional jJ
+        Nothing ->
+          (\a b j ann ->
+             let
+               f = FloatLiteralPoint (Ann ann) a b
+             in
+               maybe (TkFloat f) (TkImag . ImagLiteralFloat (Ann ann) f) j) <$>
+          -- try is necessary here to prevent the intercepting of dereference tokens
+          try (char '.' *> some1 parseDecimal) <*>
+          optional floatExp <*>
+          optional jJ
+    Just z ->
+      (\xX a b -> TkInt (IntLiteralHex (Ann b) xX a)) <$>
+      (True <$ char 'X' <|> False <$ char 'x') <*>
+      some1 parseHeXaDeCiMaL
+      <|>
+      (\bB a b -> TkInt (IntLiteralBin (Ann b) bB a)) <$>
+      (True <$ char 'B' <|> False <$ char 'b') <*>
+      some1 parseBinary
+      <|>
+      (\oO a b -> TkInt (IntLiteralOct (Ann b) oO a)) <$>
+      (True <$ char 'O' <|> False <$ char 'o') <*>
+      some1 parseOctal
+      <|>
+      (\n j a ->
+         maybe
+           (TkInt $ IntLiteralDec (Ann a) (z :| n))
+           (TkImag . ImagLiteralInt (Ann a) (z :| n)) j) <$>
+      try (many parse0 <* notFollowedBy (char '.' <|> char 'e' <|> char 'E' <|> digit)) <*>
+      optional jJ
+      <|>
+      (\n' a ann ->
+         case a of
+           Left (Left (b, c, j)) ->
+             let
+               f = FloatLiteralFull (Ann ann) (z :| n') $
+                 case (b, c) of
+                   (Nothing, Nothing) -> Nothing
+                   (Just x, Nothing) -> Just $ This x
+                   (Nothing, Just x) -> Just $ That x
+                   (Just x, Just y) -> Just $ These x y
+             in
+               maybe (TkFloat f) (TkImag . ImagLiteralFloat (Ann ann) f) j
+           Left (Right (x, j)) ->
+             let
+               f = FloatLiteralWhole (Ann ann) (z :| n') x
+             in
+               maybe (TkFloat f) (TkImag . ImagLiteralFloat (Ann ann) f) j
+           Right j -> TkImag $ ImagLiteralInt (Ann ann) (z :| n') j) <$>
+      many parseDecimal <*>
+      (Left <$>
+       (Left <$>
+        ((,,) <$ char '.' <*>
+         optional (some1 parseDecimal) <*>
+         optional floatExp <*>
+         optional jJ) <|>
+        Right <$>
+        ((,) <$> floatExp <*> optional jJ)) <|>
+      Right <$> jJ)
+  where
+    jJ = False <$ char 'j' <|> True <$ char 'J'
+    floatExp =
+      FloatExponent <$>
+      (EE <$ char 'E' <|> Ee <$ char 'e') <*>
+      optional (Pos <$ char '+' <|> Neg <$ char '-') <*>
+      some1 parseDecimal
+
+{-# inline parseToken #-}
+parseToken
+  :: (Monad m, CharParsing m, LookAheadParsing m, MonadParsec e s m)
+  => m (PyToken SrcInfo)
 parseToken =
-  fmap (\(f :^ sp) -> f sp) . careted $
-  asum @[] $
-    fmap
-    (\p -> try $ p <* notFollowedBy (satisfy isIdentifierStart))
-    [ string "if" $> TkIf
-    , string "else" $> TkElse
-    , string "while" $> TkWhile
-    , string "def" $> TkDef
-    , string "return" $> TkReturn
-    , string "pass" $> TkPass
-    , string "break" $> TkBreak
-    , string "continue" $> TkContinue
-    , string "True" $> TkTrue
-    , string "False" $> TkFalse
-    , string "or" $> TkOr
-    , string "and" $> TkAnd
-    , string "is" $> TkIs
-    , string "not" $> TkNot
-    , string "global" $> TkGlobal
-    , string "del" $> TkDel
-    , string "import" $> TkImport
-    , string "from" $> TkFrom
-    , string "as" $> TkAs
-    , string "raise" $> TkRaise
-    , string "try" $> TkTry
-    , string "except" $> TkExcept
-    , string "finally" $> TkFinally
-    , string "class" $> TkClass
-    , string "for" $> TkFor
-    , string "in" $> TkIn
-    ] <>
-    [ (\a b -> maybe (TkInt a) (TkFloat a) b) <$>
-        fmap read (some digit) <*>
-        optional (char '.' *> optional (read <$> some digit))
-    , char ' ' $> TkSpace
-    , char '\t' $> TkTab
-    , TkNewline <$> parseNewline
-    , char '[' $> TkLeftBracket
-    , char ']' $> TkRightBracket
-    , char '(' $> TkLeftParen
-    , char ')' $> TkRightParen
-    , char '{' $> TkLeftBrace
-    , char '}' $> TkRightBrace
-    , char '<' *> (char '=' $> TkLte <|> char '<' $> TkShiftLeft <|> pure TkLt)
-    , char '=' *> (char '=' $> TkDoubleEq <|> pure TkEq)
-    , char '>' *> (char '=' $> TkGte <|> char '>' $> TkShiftRight <|> pure TkGt)
-    , char '*' *> (char '*' $> TkDoubleStar <|> pure TkStar)
-    , char '/' *> (char '/' $> TkDoubleSlash <|> pure TkSlash)
-    , string "!=" $> TkBangEq
-    , char '+' $> TkPlus
-    , char '-' $> TkMinus
-    , char '%' $> TkPercent
-    , char '\\' $> TkContinued <*> parseNewline
-    , char ':' $> TkColon
-    , char ';' $> TkSemicolon
+  withSrcInfo $
+  try
+    (asum
+     [ TkIf <$ text "if"
+     , TkElse <$ text "else"
+     , TkElif <$ text "elif"
+     , TkWhile <$ text "while"
+     , TkAssert <$ text "assert"
+     , TkDef <$ text "def"
+     , TkReturn <$ text "return"
+     , TkPass <$ text "pass"
+     , TkBreak <$ text "break"
+     , TkContinue <$ text "continue"
+     , TkTrue <$ text "True"
+     , TkFalse <$ text "False"
+     , TkNone <$ text "None"
+     , TkOr <$ text "or"
+     , TkAnd <$ text "and"
+     , TkIs <$ text "is"
+     , TkNot <$ text "not"
+     , TkGlobal <$ text "global"
+     , TkNonlocal <$ text "nonlocal"
+     , TkDel <$ text "del"
+     , TkLambda <$ text "lambda"
+     , TkImport <$ text "import"
+     , TkFrom <$ text "from"
+     , TkAs <$ text "as"
+     , TkRaise <$ text "raise"
+     , TkTry <$ text "try"
+     , TkExcept <$ text "except"
+     , TkFinally <$ text "finally"
+     , TkClass <$ text "class"
+     , TkWith <$ text "with"
+     , TkFor <$ text "for"
+     , TkIn <$ text "in"
+     , TkYield <$ text "yield"
+     ] <* notFollowedBy (satisfy isIdentifierChar))
+
+    <|>
+
+    asum
+    [ number
+    , TkRightArrow <$ text "->"
+    , TkEllipsis <$ text "..."
+    , TkSpace <$ char ' '
+    , TkTab <$ char '\t'
+    , TkLeftBracket <$ char '['
+    , TkRightBracket <$ char ']'
+    , TkLeftParen <$ char '('
+    , TkRightParen <$ char ')'
+    , TkLeftBrace <$ char '{'
+    , TkRightBrace <$ char '}'
+    , char '<' *>
+      (TkLte <$ char '=' <|>
+       char '<' *> (TkShiftLeftEq <$ char '=' <|> pure TkShiftLeft) <|>
+       pure TkLt)
+    , char '=' *> (TkDoubleEq <$ char '=' <|> pure TkEq)
+    , char '>' *>
+      (TkGte <$ char '=' <|>
+       char '>' *> (TkShiftRightEq <$ char '=' <|> pure TkShiftRight) <|>
+       pure TkGt)
+    , char '*' *>
+      (char '*' *> (TkDoubleStarEq <$ char '=' <|> pure TkDoubleStar) <|>
+       TkStarEq <$ char '=' <|>
+       pure TkStar)
+    , char '/' *>
+      (char '/' *> (TkDoubleSlashEq <$ char '=' <|> pure TkDoubleSlash) <|>
+       TkSlashEq <$ char '=' <|>
+       pure TkSlash)
+    , TkBangEq <$ text "!="
+    , char '^' *> (TkCaretEq <$ char '=' <|> pure TkCaret)
+    , char '|' *> (TkPipeEq <$ char '=' <|> pure TkPipe)
+    , char '&' *> (TkAmpersandEq <$ char '=' <|> pure TkAmpersand)
+    , char '@' *> (TkAtEq <$ char '=' <|> pure TkAt)
+    , char '+' *> (TkPlusEq <$ char '=' <|> pure TkPlus)
+    , char '-' *> (TkMinusEq <$ char '=' <|> TkArrow <$ char '>' <|> pure TkMinus)
+    , char '%' *> (TkPercentEq <$ char '=' <|> pure TkPercent)
+    , TkTilde <$ char '~'
+    , TkContinued <$ char '\\' <*> newline
+    , TkColon <$ char ':'
+    , TkSemicolon <$ char ';'
+    , parseComment
+    , parseNewline
+    , TkComma <$ char ','
+    , TkDot <$ char '.'
     , do
-        sp <- optional . try $ stringPrefix <* lookAhead (char '"')
-        char '"' *>
-          (string "\"\"" $>
-           TkLongString sp DoubleQuote <*>
-           manyTill stringChar (string "\"\"\"")
-           <|>
-           TkShortString sp DoubleQuote <$> manyTill stringChar (char '"'))
+        sp <- try $ optional stringOrBytesPrefix <* char '"'
+        case sp of
+          Nothing ->
+            TkString Nothing LongString DoubleQuote <$
+            text "\"\"" <*>
+            manyTill stringChar (text "\"\"\"")
+            <|>
+            TkString Nothing ShortString DoubleQuote <$> manyTill stringChar (char '"')
+          Just (Left (Left prefix)) ->
+            TkRawString prefix LongString DoubleQuote . concat <$
+            text "\"\"" <*>
+            manyTill rawStringChar (text "\"\"\"")
+            <|>
+            TkRawString prefix ShortString DoubleQuote . concat <$>
+            manyTill rawStringChar (char '"')
+          Just (Left (Right prefix)) ->
+            TkString (Just prefix) LongString DoubleQuote <$
+            text "\"\"" <*>
+            manyTill stringChar (text "\"\"\"")
+            <|>
+            TkString (Just prefix) ShortString DoubleQuote <$> manyTill stringChar (char '"')
+          Just (Right (Left prefix)) ->
+            TkRawBytes prefix LongString DoubleQuote . concat <$
+            text "\"\"" <*>
+            manyTill rawStringChar (text "\"\"\"")
+            <|>
+            TkRawBytes prefix ShortString DoubleQuote . concat <$>
+            manyTill rawStringChar (char '"')
+          Just (Right (Right prefix)) ->
+            TkBytes prefix LongString DoubleQuote <$
+            text "\"\"" <*>
+            manyTill stringChar (text "\"\"\"")
+            <|>
+            TkBytes prefix ShortString DoubleQuote <$> manyTill stringChar (char '"')
     , do
-        sp <- optional . try $ stringPrefix <* lookAhead (char '\'')
-        char '\'' *>
-          (string "''" $>
-           TkLongString sp SingleQuote <*>
-           manyTill stringChar (string "'''")
-           <|>
-           TkShortString sp SingleQuote <$> manyTill stringChar (char '\''))
-    , TkComment <$
-      char '#' <*>
-      many (noneOf "\r\n")
-    , char ',' $> TkComma
-    , char '.' $> TkDot
+        sp <- try $ optional stringOrBytesPrefix <* char '\''
+        case sp of
+          Nothing ->
+            TkString Nothing LongString SingleQuote <$
+            text "''" <*>
+            manyTill stringChar (text "'''")
+            <|>
+            TkString Nothing ShortString SingleQuote <$> manyTill stringChar (char '\'')
+          Just (Left (Left prefix)) ->
+            TkRawString prefix LongString SingleQuote . concat <$
+            text "''" <*>
+            manyTill rawStringChar (text "'''")
+            <|>
+            TkRawString prefix ShortString SingleQuote . concat <$>
+            manyTill rawStringChar (char '\'')
+          Just (Left (Right prefix)) ->
+            TkString (Just prefix) LongString SingleQuote <$
+            text "''" <*>
+            manyTill stringChar (text "'''")
+            <|>
+            TkString (Just prefix) ShortString SingleQuote <$> manyTill stringChar (char '\'')
+          Just (Right (Left prefix)) ->
+            TkRawBytes prefix LongString SingleQuote . concat <$
+            text "''" <*>
+            manyTill rawStringChar (text "'''")
+            <|>
+            TkRawBytes prefix ShortString SingleQuote . concat <$>
+            manyTill rawStringChar (char '\'')
+          Just (Right (Right prefix)) ->
+            TkBytes prefix LongString SingleQuote <$
+            text "''" <*>
+            manyTill stringChar (text "'''")
+            <|>
+            TkBytes prefix ShortString SingleQuote <$> manyTill stringChar (char '\'')
     , fmap TkIdent $
       (:) <$>
       satisfy isIdentifierStart <*>
       many (satisfy isIdentifierChar)
     ]
 
-tokenize :: String -> Trifecta.Result [PyToken Caret]
-tokenize = parseString (many parseToken) mempty
+class AsLexicalError s t | s -> t where
+  _LexicalError
+    :: Prism'
+         s
+         ( NonEmpty Parsec.SourcePos
+         , Maybe (Parsec.ErrorItem t)
+         , Set (Parsec.ErrorItem t)
+         )
+
+-- | Convert a concrete 'ParseError' to a value that has an instance of 'AsLexicalError'
+--
+-- This function is partial, because our parser will never use 'Parsec.FancyError'
+unsafeFromLexicalError
+  :: ( HasCallStack
+     , AsLexicalError s t
+     )
+  => ParseError t Void
+  -> s
+unsafeFromLexicalError (Parsec.TrivialError a b c) = _LexicalError # (a, b, c)
+unsafeFromLexicalError Parsec.FancyError{} = error "'fancy error' used in lexer"
+
+{-# noinline tokenize #-}
+-- | Convert some input to a sequence of tokens. Indent and dedent tokens are not added
+-- (see 'insertTabs')
+tokenize
+  :: AsLexicalError e Char
+  => FilePath -- ^ File name
+  -> Text.Text -- ^ Input to tokenize
+  -> Either e [PyToken SrcInfo]
+tokenize fp = first unsafeFromLexicalError . parse (unParsecT tokens) fp
+  where
+    tokens :: ParsecT Void Text.Text Identity [PyToken SrcInfo]
+    tokens = many parseToken <* Parsec.eof
 
 data LogicalLine a
   = LogicalLine
-  { llAnn :: a
-  , llSpaces :: Indent
-  , llLine :: [PyToken a]
-  , llEnd :: Maybe (PyToken a, Newline)
-  } deriving (Eq, Show)
+      a -- annotation
+      ([PyToken a], Indent) -- spaces
+      [PyToken a] -- line
+      (Maybe (PyToken a)) -- end
+  | BlankLine
+      [PyToken a] -- line
+      (Maybe (PyToken a)) -- end
+  deriving (Eq, Show)
+
+logicalLineToTokens :: LogicalLine a -> [PyToken a]
+logicalLineToTokens (LogicalLine _ _ ts m) = ts <> maybe [] pure m
+logicalLineToTokens (BlankLine ts m) = ts <> maybe [] pure m
 
 spaceToken :: PyToken a -> Maybe Whitespace
 spaceToken TkSpace{} = Just Space
@@ -221,10 +530,6 @@ collapseContinue ((tk@TkContinued{}, Continued nl ws) : xs) =
     [(tk : (xs' >>= fst), Continued nl $ ws <> fmap snd xs')]
 collapseContinue _ = error "invalid token/whitespace pair in collapseContinue"
 
-newlineToken :: PyToken a -> Maybe Newline
-newlineToken (TkNewline nl _) = Just nl
-newlineToken _ = Nothing
-
 spanMaybe :: (a -> Maybe b) -> [a] -> ([b], [a])
 spanMaybe f as =
   case as of
@@ -236,9 +541,10 @@ spanMaybe f as =
 
 -- | Acts like break, but encodes the "insignificant whitespace" rule for parens, braces
 -- and brackets
-breakOnNewline :: [PyToken a] -> ([PyToken a], Maybe ((PyToken a, Newline), [PyToken a]))
+breakOnNewline :: [PyToken a] -> ([PyToken a], Maybe (PyToken a, [PyToken a]))
 breakOnNewline = go 0
   where
+    go :: Int -> [PyToken a] -> ([PyToken a], Maybe (PyToken a, [PyToken a]))
     go _ [] = ([], Nothing)
     go !careWhen0 (tk : tks) =
       case tk of
@@ -248,8 +554,8 @@ breakOnNewline = go 0
         TkRightParen{} -> first (tk :) $ go (max 0 $ careWhen0 - 1) tks
         TkRightBracket{} -> first (tk :) $ go (max 0 $ careWhen0 - 1) tks
         TkRightBrace{} -> first (tk :) $ go (max 0 $ careWhen0 - 1) tks
-        TkNewline nl _
-          | careWhen0 == 0 -> ([], Just ((tk, nl), tks))
+        TkNewline{}
+          | careWhen0 == 0 -> ([], Just (tk, tks))
           | otherwise -> first (tk :) $ go careWhen0 tks
         _ -> first (tk :) $ go careWhen0 tks
 
@@ -259,20 +565,27 @@ logicalLines tks =
   let
     (spaces, rest) = spanMaybe (\a -> (,) a <$> spaceToken a) tks
     (line, rest') = breakOnNewline rest
+    spaces' = collapseContinue spaces
   in
-    LogicalLine
-      (case tks of
-         [] -> error "couldn't generate annotation for logical line"
-         tk : _ -> pyTokenAnn tk)
-      (fmap snd (collapseContinue spaces) ^. from indentWhitespaces)
-      line
-      (fst <$> rest')
-      :
-    logicalLines (maybe [] snd rest') 
+    (if
+       not (any (\case; Continued{} -> True; _ -> False) $ snd <$> spaces) &&
+       all isBlankToken line
+     then
+       BlankLine (fmap fst spaces <> line) (fst <$> rest')
+     else
+       LogicalLine
+         (case tks of
+           [] -> error "couldn't generate annotation for logical line"
+           tk : _ -> pyTokenAnn tk)
+         (spaces' >>= fst, fmap snd spaces' ^. from indentWhitespaces)
+         line
+         (fst <$> rest')) :
+    logicalLines (maybe [] snd rest')
 
 data IndentedLine a
-  = Indent Int a
-  | Dedent
+  = Indent Int Indent a
+  | Level (NonEmpty Whitespace) a
+  | Dedent a
   | IndentedLine (LogicalLine a)
   deriving (Eq, Show)
 
@@ -284,88 +597,102 @@ isBlankToken TkNewline{} = True
 isBlankToken _ = False
 
 data TabError a
-  = TabError
+  -- | Tabs and spaces were used inconsistently
+  = TabError a
+  -- | The dedent at the end of a block doesn't match and preceding indents
+  --
+  -- e.g.
+  --
+  -- @
+  -- def a():
+  --     if b:
+  --         pass
+  --     else:
+  --         pass
+  --   pass
+  -- @
+  --
+  -- The final line will cause an 'IncorrectDedent' error
   | IncorrectDedent a
   deriving (Eq, Show)
 
-indentation :: [LogicalLine a] -> Either (TabError a) [IndentedLine a]
-indentation lls =
-  flip evalStateT (pure mempty) $
+class AsTabError s a | s -> a where
+  _TabError :: Prism' s a
+
+class AsIncorrectDedent s a | s -> a where
+  _IncorrectDedent :: Prism' s a
+
+-- | Convert a concrete 'TabError' to a value that has an instance of 'AsTabError'
+fromTabError
+  :: ( AsTabError s a
+     , AsIncorrectDedent s a
+     )
+  => TabError a -> s
+fromTabError (TabError a) = _TabError # a
+fromTabError (IncorrectDedent a) = _IncorrectDedent # a
+
+indentation :: Semigroup a => a -> [LogicalLine a] -> Either (TabError a) [IndentedLine a]
+indentation ann lls =
+  flip evalStateT (pure (ann, mempty)) $
   (<>) <$> (concat <$> traverse go lls) <*> finalDedents
   where
-    finalDedents :: StateT (NonEmpty Indent) (Either (TabError a)) [IndentedLine a]
+    finalDedents :: StateT (NonEmpty (a, Indent)) (Either (TabError a)) [IndentedLine a]
     finalDedents = do
-      i :| is <- get
+      (ann, _) :| is <- get
       case is of
         [] -> pure []
         i' : is' -> do
           put $ i' :| is'
-          (Dedent :) <$> finalDedents
+          (Dedent ann :) <$> finalDedents
 
-    dedents :: a -> Int -> StateT (NonEmpty Indent) (Either (TabError a)) [IndentedLine a]
+    dedents
+      :: a
+      -> Int
+      -> StateT (NonEmpty (a, Indent)) (Either (TabError a)) [IndentedLine a]
     dedents ann n = do
       is <- get
-      let (popped, remainder) = NonEmpty.span ((> n) . indentLevel) is
-      when (n `notElem` fmap indentLevel (NonEmpty.toList is)) .
+      let (popped, remainder) = NonEmpty.span ((> n) . indentLevel . snd) is
+      when (n `notElem` fmap (indentLevel . snd) (NonEmpty.toList is)) .
         throwError $ IncorrectDedent ann
       put $ case remainder of
         [] -> error "I don't know whether this can happen"
         x : xs -> x :| xs
-      pure $ replicate (length popped) Dedent
+      pure $ replicate (length popped) (Dedent ann)
 
-    go :: LogicalLine a -> StateT (NonEmpty Indent) (Either (TabError a)) [IndentedLine a]
-    go ll@(LogicalLine ann spcs line nl)
-      | all isBlankToken line = pure [IndentedLine ll]
-      | otherwise = do
-          i :| is <- get
-          let
-            et8 = absoluteIndentLevel 8 spcs
-            et1 = absoluteIndentLevel 1 spcs
-            et8i = absoluteIndentLevel 8 i
-            et1i = absoluteIndentLevel 1 i
-          when
-            (not (et8 < et8i && et1 < et1i) &&
-             not (et8 > et8i && et1 > et1i) &&
-             not (et8 == et8i && et1 == et1i))
-            (throwError TabError)
-          let
-            ilSpcs = indentLevel spcs
-            ili = indentLevel i
-          case compare ilSpcs ili of
-            LT -> (<> [IndentedLine ll]) <$> dedents ann ilSpcs
-            EQ -> pure [IndentedLine ll]
-            GT -> do
-              modify $ NonEmpty.cons spcs
-              pure [Indent (ilSpcs - ili) ann, IndentedLine ll]
+    go
+      :: Semigroup a
+      => LogicalLine a
+      -> StateT (NonEmpty (a, Indent)) (Either (TabError a)) [IndentedLine a]
+    go ll@BlankLine{} = pure [IndentedLine ll]
+    go ll@(LogicalLine ann (spTks, spcs) _ _) = do
+      (_, i) :| _ <- get
+      let
+        et8 = absoluteIndentLevel 8 spcs
+        et1 = absoluteIndentLevel 1 spcs
+        et8i = absoluteIndentLevel 8 i
+        et1i = absoluteIndentLevel 1 i
+      when
+        (not (et8 < et8i && et1 < et1i) &&
+          not (et8 > et8i && et1 > et1i) &&
+          not (et8 == et8i && et1 == et1i))
+        (throwError $ TabError ann)
+      let
+        ilSpcs = indentLevel spcs
+        ili = indentLevel i
+        levelIndent =
+          case (spTks, spcs ^. indentWhitespaces) of
+            ([], []) -> []
+            (x:xs, y:ys) -> [ Level (y:|ys) (foldMap1 pyTokenAnn $ x:|xs) ]
+            _ -> error "impossible"
+      case compare ilSpcs ili of
+        LT -> (<> (levelIndent <> [IndentedLine ll])) <$> dedents ann ilSpcs
+        EQ ->
+          pure $ levelIndent <> [ IndentedLine ll ]
+        GT -> do
+          modify $ NonEmpty.cons (ann, spcs)
+          pure [Indent (ilSpcs - ili) spcs ann, IndentedLine ll]
 
-data Line a
-  = Line
-  { lineAnn :: a
-  , lineSpaces :: [Indent]
-  , lineLine :: [PyToken a]
-  , lineEnd :: Maybe Newline
-  } deriving (Eq, Show)
-
-logicalToLine :: FingerTree (Sum Int) (Summed Int) -> LogicalLine a -> Line a
-logicalToLine leaps (LogicalLine a b c d) =
-  Line a (if all isBlankToken c then [b] else splitIndents leaps b) c (snd <$> d)
-
-newtype Nested a
-  = Nested
-  { unNested :: Seq (Either (Nested a) (Line a))
-  } deriving (Eq, Show)
-
-nestedAnnotation :: Nested a -> Maybe a
-nestedAnnotation (Nested s) = s !? 0 >>= either nestedAnnotation (pure . lineAnn)
-
-data IndentationError
-  = UnexpectedDedent
-  | ExpectedDedent
-  deriving (Eq, Show)
-
-newtype Summed a
-  = Summed
-  { getSummed :: a }
+newtype Summed a = Summed a
   deriving (Eq, Show, Ord, Num)
 
 instance Num a => Measured (Sum a) (Summed a) where
@@ -389,28 +716,54 @@ splitIndents ns ws = go ns ws []
               in
                 if FingerTree.null afters
                 then error $ "could not carve out " <> show n <> " from " <> show ws
-                else go ns' (MkIndent befores) .  (MkIndent afters :)
+                else go ns' (MkIndent befores) . (MkIndent afters :)
 
-nested :: [IndentedLine a] -> Either IndentationError (Nested a)
-nested = fmap Nested . go FingerTree.empty []
+chunked :: [IndentedLine a] -> [PyToken a]
+chunked = go FingerTree.empty
   where
     go
       :: FingerTree (Sum Int) (Summed Int)
-      -> [Seq (Either (Nested a) (Line a))]
       -> [IndentedLine a]
-      -> Either
-           IndentationError
-           (Seq (Either (Nested a) (Line a)))
-    go leaps [] [] = pure []
-    go leaps (a : as) [] = foldr (\_ _ -> Left ExpectedDedent) (pure a) as
-    go leaps ctxt (Indent n a : is) = go (leaps FingerTree.|> Summed n) ([] : ctxt) is
-    go leaps [] (Dedent : is) = Left UnexpectedDedent
-    go leaps (a : as) (Dedent : is) =
+      -> [PyToken a]
+    go _ [] = []
+    go leaps (Indent n i a : is) =
+      let
+        leaps' = leaps FingerTree.|> Summed n
+      in
+        TkIndent a (Indents (splitIndents leaps' i) (Ann a)) : go leaps' is
+    go leaps (Dedent a : is) =
       case FingerTree.viewr leaps of
         FingerTree.EmptyR -> error "impossible"
-        leaps' FingerTree.:> _ ->
-          case as of
-            x : xs -> go leaps' ((x |> Left (Nested a)) : xs) is
-            [] -> go leaps' [[Left (Nested a)]] is
-    go leaps [] (IndentedLine ll : is) = go leaps [[Right $ logicalToLine leaps ll]] is
-    go leaps (a : as) (IndentedLine ll : is) = go leaps ((a |> Right (logicalToLine leaps ll)) : as) is
+        leaps' FingerTree.:> _ -> TkDedent a : go leaps' is
+    go leaps (IndentedLine ll : is) = logicalLineToTokens ll <> go leaps is
+    go leaps (Level i a : is) =
+      TkLevel a (Indents (splitIndents leaps $ NonEmpty.toList i ^. from indentWhitespaces) (Ann a)) : go leaps is
+
+-- | Insert indent and dedent tokens
+--
+-- https://docs.python.org/3.5/reference/lexical_analysis.html#indentation
+insertTabs
+  :: ( Semigroup a
+     , AsTabError s a
+     , AsIncorrectDedent s a
+     )
+  => a -- ^ Initial source annotation
+  -> [PyToken a] -- ^ Token stream
+  -> Either s [PyToken a]
+insertTabs a =
+  first fromTabError .
+  fmap chunked .
+  indentation a .
+  logicalLines
+
+-- | Tokenize an input file, inserting indent\/level\/dedent tokens in appropriate
+-- positions according to the block structure.
+tokenizeWithTabs
+  :: ( AsLexicalError s Char
+     , AsTabError s SrcInfo
+     , AsIncorrectDedent s SrcInfo
+     )
+  => FilePath -- ^ File name
+  -> Text.Text -- ^ Input to tokenize
+  -> Either s [PyToken SrcInfo]
+tokenizeWithTabs fp = insertTabs (initialSrcInfo fp) <=< tokenize fp

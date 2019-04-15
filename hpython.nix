@@ -1,22 +1,27 @@
-{ mkDerivation, base, bytestring-trie, containers, deriving-compat
-, directory, filepath, fingertree, hedgehog, lens, mtl, parsers
-, process, semigroupoids, stdenv, transformers, trifecta
-, type-level-sets
+{ mkDerivation, base, bifunctors, bytestring, containers, criterion
+, deepseq, deriving-compat, digit, dlist, filepath, fingertree
+, generic-lens, hedgehog, lens, megaparsec, mtl, parsers
+, parsers-megaparsec, semigroupoids, stdenv, text, these
+, validation
 }:
 mkDerivation {
   pname = "hpython";
-  version = "0.1.0.0";
+  version = "0.2";
   src = ./.;
   isLibrary = true;
   isExecutable = true;
   libraryHaskellDepends = [
-    base bytestring-trie containers deriving-compat fingertree lens mtl
-    parsers semigroupoids trifecta type-level-sets
+    base bifunctors bytestring containers deriving-compat digit dlist
+    fingertree generic-lens lens megaparsec mtl parsers
+    parsers-megaparsec semigroupoids text these validation
   ];
-  executableHaskellDepends = [ base lens ];
+  executableHaskellDepends = [ base lens text ];
   testHaskellDepends = [
-    base directory filepath hedgehog lens mtl process semigroupoids
-    transformers trifecta
+    base filepath hedgehog lens megaparsec text validation
   ];
+  benchmarkHaskellDepends = [
+    base criterion deepseq megaparsec text validation
+  ];
+  description = "Python language tools";
   license = stdenv.lib.licenses.bsd3;
 }
