@@ -4,34 +4,56 @@ Haskell-based language tools for Python
 
 <img src="http://i.imgur.com/0h9dFhl.png" width="300px"/>
 
+`hpython` provides an abstract syntax tree for Python 3.5, along with a parser, printer,
+and syntax checker. It also contains optics for working with the AST, and a DSL for writing
+Python programs directly in Haskell.
+
+## Features
+
+* Formatting-preserving syntax tree
+* Parser and printer, with a round-trip law: `print ∘ parse ≡ id`
+* Optics for manipulating the syntax tree
+* Indentation, syntax, and scope checking
+* The syntax tree is indexed by its level of validation, to distinguish between
+  syntactically valid Python and unvalidated code
+* Convenient DSL for building Python programs
+
 ## Examples
 
-See the `example` directory
+See [the `example` directory](https://github.com/qfpl/hpython/tree/master/example)
 
-## `hpython` contains proofs of concept for a few of ideas:
+## FAQ
 
-### Validation Stages
+*Why not just use `language-python`?*
 
-Using phantom types and type-level sets to re-use the same abstract syntax tree, but
-recieve different validation guarantees. A Python program begins in the "unvalidated"
-state (type-level empty set). Then, increasing levels of validation are imposed, and its
-level of validation is updated to reflect this (members are added to the set).
+There are two main reasons: 
 
-This also means that "un-validating" data has no runtime cost.
+1. We think the print-parse identity is important. `language-python` discards lexical 
+   information like indentation levels and spacing, which means there is big cost to
+   using it to modify human-written code. `hpython` retains formatting information
+   in a way that has minimal impact when using the library. This means that program
+   transformations change as little formatting as possible.
+   
+2. We want to use types to precisely model the domain. `language-python` unifies
+   Python 2 and 3 into a single data structure. We disagree with this choice,
+   because Python 2 and 3 have different, non-compatible features. In Haskell terms,
+   they are different datatypes with a large amount of overlap. Our goal is to make
+   this difference visible in the type system without increasing code repetition.
+   
+   There are other minor places where `language-python` has made similar concessions,
+   like in the treatment of 'starred expressions' (which are not really expressions
+   at all).
+   
 
-### Optics-based Refactoring
+## Development Pipeline
 
-Prisms for the syntax tree: prisms can be used to match on a tree with any validation level,
-but can only be used to construct unvalidated terms. We can't be sure that we didn't build
-an invalid tree.
+* Support other versions of Python while re-using as much common code as possible
+* Style configs for the DSL
+* Human readable validation errors, with source spans
 
-Where possible, datatypes in the abstract syntax tree have instances of
-[Plated](https://hackage.haskell.org/package/lens/docs/Control-Lens-Plated.html). Alongside
-the prisms, this provides a powerful API for rewriting arbitrary terms.
+## Contribution
 
-### Python 2 and 3 compatibility
+Feel free to file an issue or pull request on Github, or contact us at:
 
-There is a subset of Python programs which are compatible with both Python 2 and 3. It would
-be nice if we could talk about this difference at the type level.
-
-Coming soon (maybe).
+IRC - #qfpl on Freenode
+Email - <oᴉ˙ldɟb@llǝʞsɐɥ>
