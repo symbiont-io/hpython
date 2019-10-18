@@ -1,8 +1,11 @@
-{-# language DataKinds #-}
-{-# language DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
-{-# language FunctionalDependencies, MultiParamTypeClasses #-}
-{-# language LambdaCase #-}
-{-# language TemplateHaskell #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE DeriveFoldable         #-}
+{-# LANGUAGE DeriveFunctor          #-}
+{-# LANGUAGE DeriveTraversable      #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE LambdaCase             #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE TemplateHaskell        #-}
 
 {-|
 Module      : Language.Python.Internal.Syntax.IR
@@ -24,8 +27,8 @@ import Control.Lens.Fold (foldMapOf, folded)
 import Control.Lens.Getter ((^.))
 import Control.Lens.Lens (Lens', lens)
 import Control.Lens.Prism (Prism')
-import Control.Lens.Review ((#))
-import Control.Lens.Setter (over, mapped)
+import Control.Lens.Review (( # ))
+import Control.Lens.Setter (mapped, over)
 import Control.Lens.TH (makeLenses)
 import Control.Lens.Traversal (traverseOf)
 import Control.Lens.Tuple (_1, _2, _3)
@@ -34,7 +37,7 @@ import Data.Bifunctor (bimap)
 import Data.Bitraversable (bitraverse)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Monoid ((<>))
-import Data.Validation (Validation(..))
+import Data.Validation (Validation (..))
 
 import Language.Python.Syntax.Ann
 import Language.Python.Syntax.AugAssign
@@ -50,8 +53,8 @@ import Language.Python.Syntax.Punctuation
 import Language.Python.Syntax.Strings
 import Language.Python.Syntax.Whitespace
 
-import qualified Language.Python.Syntax.Module as Syntax
 import qualified Language.Python.Syntax.Expr as Syntax
+import qualified Language.Python.Syntax.Module as Syntax
 import qualified Language.Python.Syntax.Statement as Syntax
 
 class AsIRError s a | s -> a where
@@ -81,26 +84,26 @@ data Statement a
 
 data CompoundStatement a
   = Fundef
-  { _csAnn :: a
+  { _csAnn                    :: a
   , _unsafeCsFundefDecorators :: [Decorator a]
-  , _csIndents :: Indents a
-  , _unsafeCsFundefAsync :: Maybe (NonEmpty Whitespace) -- ^ @[\'async\' \<spaces\>]@
-  , _unsafeCsFundefDef :: NonEmpty Whitespace -- ^ @\'def\' \<spaces\>@
-  , _unsafeCsFundefName :: Ident '[] a -- ^ @\<ident\>@
-  , _unsafeCsFundefLeftParen :: [Whitespace] -- ^ @\'(\' \<spaces\>@
+  , _csIndents                :: Indents a
+  , _unsafeCsFundefAsync      :: Maybe (NonEmpty Whitespace) -- ^ @[\'async\' \<spaces\>]@
+  , _unsafeCsFundefDef        :: NonEmpty Whitespace -- ^ @\'def\' \<spaces\>@
+  , _unsafeCsFundefName       :: Ident '[] a -- ^ @\<ident\>@
+  , _unsafeCsFundefLeftParen  :: [Whitespace] -- ^ @\'(\' \<spaces\>@
   , _unsafeCsFundefParameters :: CommaSep (Param a) -- ^ @\<parameters\>@
   , _unsafeCsFundefRightParen :: [Whitespace] -- ^ @\')\' \<spaces\>@
   , _unsafeCsFundefReturnType :: Maybe ([Whitespace], Expr a) -- ^ @[\'->\' \<spaces\> \<expr\>]@
-  , _unsafeCsFundefBody :: Suite a -- ^ @\<suite\>@
+  , _unsafeCsFundefBody       :: Suite a -- ^ @\<suite\>@
   }
   | If
-  { _csAnn :: a
-  , _csIndents :: Indents a
-  , _unsafeCsIfIf :: [Whitespace] -- ^ @\'if\' \<spaces\>@
-  , _unsafeCsIfCond :: Expr a -- ^ @\<expr\>@
-  , _unsafeCsIfBody :: Suite a -- ^ @\<suite\>@
+  { _csAnn           :: a
+  , _csIndents       :: Indents a
+  , _unsafeCsIfIf    :: [Whitespace] -- ^ @\'if\' \<spaces\>@
+  , _unsafeCsIfCond  :: Expr a -- ^ @\<expr\>@
+  , _unsafeCsIfBody  :: Suite a -- ^ @\<suite\>@
   , _unsafeCsIfElifs :: [(Indents a, [Whitespace], Expr a, Suite a)] -- ^ @(\'elif\' \<spaces\> \<expr\> \<suite\>)*@
-  , _unsafeCsIfElse :: Maybe (Indents a, [Whitespace], Suite a) -- ^ @[\'else\' \<spaces\> \<suite\>]@
+  , _unsafeCsIfElse  :: Maybe (Indents a, [Whitespace], Suite a) -- ^ @[\'else\' \<spaces\> \<suite\>]@
   }
   | While
   { _csAnn :: a
@@ -121,24 +124,24 @@ data CompoundStatement a
   , _unsafeCsTryExceptFinally :: Maybe (Indents a, [Whitespace], Suite a) -- ^ @[\'finally\' \<spaces\> \<suite\>]@
   }
   | TryFinally
-  { _csAnn :: a
-  , _csIndents :: Indents a
-  , _unsafeCsTryFinallyTry :: [Whitespace] -- ^ @\'try\' \<spaces\>@
-  , _unsafeCsTryFinallyTryBody :: Suite a -- ^ @\<suite\>@
+  { _csAnn                            :: a
+  , _csIndents                        :: Indents a
+  , _unsafeCsTryFinallyTry            :: [Whitespace] -- ^ @\'try\' \<spaces\>@
+  , _unsafeCsTryFinallyTryBody        :: Suite a -- ^ @\<suite\>@
   , _unsafeCsTryFinallyFinallyIndents :: Indents a
-  , _unsafeCsTryFinallyFinally :: [Whitespace] -- ^ @\'finally\' \<spaces\>@
-  , _unsafeCsTryFinallyFinallyBody :: Suite a -- ^ @\<suite\>@
+  , _unsafeCsTryFinallyFinally        :: [Whitespace] -- ^ @\'finally\' \<spaces\>@
+  , _unsafeCsTryFinallyFinallyBody    :: Suite a -- ^ @\<suite\>@
   }
   | For
-  { _csAnn :: a
-  , _csIndents :: Indents a
-  , _unsafeCsForAsync :: Maybe (NonEmpty Whitespace) -- ^ @[\'async\' \<spaces\>]@
-  , _unsafeCsForFor :: [Whitespace] -- ^ @\'for\' \<spaces\>@
-  , _unsafeCsForBinder :: Expr a -- ^ @\<expr\>@
-  , _unsafeCsForIn :: [Whitespace] -- ^ @\'in\' \<spaces\>@
+  { _csAnn                 :: a
+  , _csIndents             :: Indents a
+  , _unsafeCsForAsync      :: Maybe (NonEmpty Whitespace) -- ^ @[\'async\' \<spaces\>]@
+  , _unsafeCsForFor        :: [Whitespace] -- ^ @\'for\' \<spaces\>@
+  , _unsafeCsForBinder     :: Expr a -- ^ @\<expr\>@
+  , _unsafeCsForIn         :: [Whitespace] -- ^ @\'in\' \<spaces\>@
   , _unsafeCsForCollection :: CommaSep1' (Expr a) -- ^ @\<exprs\>@
-  , _unsafeCsForBody :: Suite a -- ^ @\<suite\>@
-  , _unsafeCsForElse :: Maybe (Indents a, [Whitespace], Suite a) -- ^ @[\'else\' \<spaces\> \<suite\>]@
+  , _unsafeCsForBody       :: Suite a -- ^ @\<suite\>@
+  , _unsafeCsForElse       :: Maybe (Indents a, [Whitespace], Suite a) -- ^ @[\'else\' \<spaces\> \<suite\>]@
   }
   | ClassDef
   { _csAnn :: a
@@ -150,19 +153,19 @@ data CompoundStatement a
   , _unsafeCsClassDefBody :: Suite a -- ^ @\<suite\>@
   }
   | With
-  { _csAnn :: a
-  , _csIndents :: Indents a
+  { _csAnn             :: a
+  , _csIndents         :: Indents a
   , _unsafeCsWithAsync :: Maybe (NonEmpty Whitespace) -- ^ @[\'async\' \<spaces\>]@
-  , _unsafeCsWithWith :: [Whitespace] -- ^ @\'with\' \<spaces\>@
+  , _unsafeCsWithWith  :: [Whitespace] -- ^ @\'with\' \<spaces\>@
   , _unsafeCsWithItems :: CommaSep1 (WithItem a) -- ^ @\<with_items\>@
-  , _unsafeCsWithBody :: Suite a -- ^ @\<suite\>@
+  , _unsafeCsWithBody  :: Suite a -- ^ @\<suite\>@
   }
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 data SimpleStatement a
   = Return a [Whitespace] (Maybe (Expr a))
   | Expr a (Expr a)
-  | Assign a (Expr a) (NonEmpty (Equals, Expr a))
+  | Assign a (Expr a) (Maybe (Expr a)) (NonEmpty (Equals, Expr a))
   | AugAssign a (Expr a) (AugAssign a) (Expr a)
   | Pass a [Whitespace]
   | Break a [Whitespace]
@@ -191,37 +194,37 @@ data SimpleStatement a
 
 data Param a
   = PositionalParam
-  { _paramAnn :: a
+  { _paramAnn  :: a
   , _paramName :: Ident '[] a
   , _paramType :: Maybe (Colon, Expr a)
   }
   | KeywordParam
-  { _paramAnn :: a
-  , _paramName :: Ident '[] a
+  { _paramAnn                          :: a
+  , _paramName                         :: Ident '[] a
   -- ':' spaces <expr>
-  , _paramType :: Maybe (Colon, Expr a)
+  , _paramType                         :: Maybe (Colon, Expr a)
   -- = spaces
   , _unsafeKeywordParamWhitespaceRight :: [Whitespace]
-  , _unsafeKeywordParamExpr :: Expr a
+  , _unsafeKeywordParamExpr            :: Expr a
   }
   | StarParam
-  { _paramAnn :: a
+  { _paramAnn                  :: a
   -- '*' spaces
   , _unsafeStarParamWhitespace :: [Whitespace]
-  , _unsafeStarParamName :: Ident '[] a
-  , _paramType :: Maybe (Colon, Expr a)
+  , _unsafeStarParamName       :: Ident '[] a
+  , _paramType                 :: Maybe (Colon, Expr a)
   }
   | UnnamedStarParam
-  { _paramAnn :: a
+  { _paramAnn                         :: a
   -- '*' spaces
   , _unsafeUnnamedStarParamWhitespace :: [Whitespace]
   }
   | DoubleStarParam
-  { _paramAnn :: a
+  { _paramAnn                        :: a
   -- '**' spaces
   , _unsafeDoubleStarParamWhitespace :: [Whitespace]
-  , _paramName :: Ident '[] a
-  , _paramType :: Maybe (Colon, Expr a)
+  , _paramName                       :: Ident '[] a
+  , _paramType                       :: Maybe (Colon, Expr a)
   }
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
@@ -268,239 +271,239 @@ data Subscript a
 
 data DictItem a
   = DictItem
-  { _dictItemAnn :: a
-  , _unsafeDictItemKey :: Expr a
+  { _dictItemAnn         :: a
+  , _unsafeDictItemKey   :: Expr a
   , _unsafeDictItemColon :: Colon
   , _unsafeDictItemvalue :: Expr a
   }
   | DictUnpack
-  { _dictItemAnn :: a
+  { _dictItemAnn                    :: a
   , _unsafeDictItemUnpackWhitespace :: [Whitespace]
-  , _unsafeDictItemUnpackValue :: Expr a
+  , _unsafeDictItemUnpackValue      :: Expr a
   } deriving (Eq, Show, Functor, Foldable, Traversable)
 
 data Arg a
   = PositionalArg
-  { _argAnn :: a
+  { _argAnn  :: a
   , _argExpr :: Expr a
   }
   | KeywordArg
-  { _argAnn :: a
-  , _unsafeKeywordArgName :: Ident '[] a
+  { _argAnn                          :: a
+  , _unsafeKeywordArgName            :: Ident '[] a
   , _unsafeKeywordArgWhitespaceRight :: [Whitespace]
-  , _argExpr :: Expr a
+  , _argExpr                         :: Expr a
   }
   | StarArg
-  { _argAnn :: a
+  { _argAnn                  :: a
   , _unsafeStarArgWhitespace :: [Whitespace]
-  , _argExpr :: Expr a
+  , _argExpr                 :: Expr a
   }
   | DoubleStarArg
-  { _argAnn :: a
+  { _argAnn                        :: a
   , _unsafeDoubleStarArgWhitespace :: [Whitespace]
-  , _argExpr :: Expr a
+  , _argExpr                       :: Expr a
   }
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 data Expr a
   = StarExpr
-  { _exprAnn :: a
+  { _exprAnn                  :: a
   , _unsafeStarExprWhitespace :: [Whitespace]
-  , _unsafeStarExprValue :: Expr a
+  , _unsafeStarExprValue      :: Expr a
   }
   | Unit
-  { _exprAnn :: a
+  { _exprAnn                   :: a
   , _unsafeUnitWhitespaceInner :: [Whitespace]
   , _unsafeUnitWhitespaceRight :: [Whitespace]
   }
   | Lambda
-  { _exprAnn :: a
+  { _exprAnn                :: a
   , _unsafeLambdaWhitespace :: [Whitespace]
-  , _unsafeLambdaArgs :: CommaSep (Param a)
-  , _unsafeLambdaColon :: Colon
-  , _unsafeLambdaBody :: Expr a
+  , _unsafeLambdaArgs       :: CommaSep (Param a)
+  , _unsafeLambdaColon      :: Colon
+  , _unsafeLambdaBody       :: Expr a
   }
   | Yield
-  { _exprAnn :: a
+  { _exprAnn               :: a
   , _unsafeYieldWhitespace :: [Whitespace]
-  , _unsafeYieldValue :: CommaSep (Expr a)
+  , _unsafeYieldValue      :: CommaSep (Expr a)
   }
   | YieldFrom
-  { _exprAnn :: a
+  { _exprAnn               :: a
   , _unsafeYieldWhitespace :: [Whitespace]
-  , _unsafeFromWhitespace :: [Whitespace]
-  , _unsafeYieldFromValue :: Expr a
+  , _unsafeFromWhitespace  :: [Whitespace]
+  , _unsafeYieldFromValue  :: Expr a
   }
   | Ternary
-  { _exprAnn :: a
+  { _exprAnn                     :: a
   -- expr
-  , _unsafeTernaryValue :: Expr a
+  , _unsafeTernaryValue          :: Expr a
   -- 'if' spaces
-  , _unsafeTernaryWhitespaceIf :: [Whitespace]
+  , _unsafeTernaryWhitespaceIf   :: [Whitespace]
   -- expr
-  , _unsafeTernaryCond :: Expr a
+  , _unsafeTernaryCond           :: Expr a
   -- 'else' spaces
   , _unsafeTernaryWhitespaceElse :: [Whitespace]
   -- expr
-  , _unsafeTernaryElse :: Expr a
+  , _unsafeTernaryElse           :: Expr a
   }
   | ListComp
-  { _exprAnn :: a
+  { _exprAnn                       :: a
   -- [ spaces
-  , _unsafeListCompWhitespaceLeft :: [Whitespace]
+  , _unsafeListCompWhitespaceLeft  :: [Whitespace]
   -- comprehension
-  , _unsafeListCompValue :: Comprehension Expr a
+  , _unsafeListCompValue           :: Comprehension Expr a
   -- ] spaces
   , _unsafeListCompWhitespaceRight :: [Whitespace]
   }
   | List
-  { _exprAnn :: a
+  { _exprAnn                   :: a
   -- [ spaces
-  , _unsafeListWhitespaceLeft :: [Whitespace]
+  , _unsafeListWhitespaceLeft  :: [Whitespace]
   -- exprs
-  , _unsafeListValues :: Maybe (CommaSep1' (Expr a))
+  , _unsafeListValues          :: Maybe (CommaSep1' (Expr a))
   -- ] spaces
   , _unsafeListWhitespaceRight :: [Whitespace]
   }
   | DictComp
-  { _exprAnn :: a
+  { _exprAnn                       :: a
   -- { spaces
-  , _unsafeDictCompWhitespaceLeft :: [Whitespace]
+  , _unsafeDictCompWhitespaceLeft  :: [Whitespace]
   -- comprehension
-  , _unsafeDictCompValue :: Comprehension DictItem a
+  , _unsafeDictCompValue           :: Comprehension DictItem a
   -- } spaces
   , _unsafeDictCompWhitespaceRight :: [Whitespace]
   }
   | Dict
-  { _exprAnn :: a
-  , _unsafeDictWhitespaceLeft :: [Whitespace]
-  , _unsafeDictValues :: Maybe (CommaSep1' (DictItem a))
+  { _exprAnn                   :: a
+  , _unsafeDictWhitespaceLeft  :: [Whitespace]
+  , _unsafeDictValues          :: Maybe (CommaSep1' (DictItem a))
   , _unsafeDictWhitespaceRight :: [Whitespace]
   }
   | SetComp
-  { _exprAnn :: a
+  { _exprAnn                      :: a
   -- { spaces
-  , _unsafeSetCompWhitespaceLeft :: [Whitespace]
+  , _unsafeSetCompWhitespaceLeft  :: [Whitespace]
   -- comprehension
-  , _unsafeSetCompValue :: Comprehension Expr a
+  , _unsafeSetCompValue           :: Comprehension Expr a
   -- } spaces
   , _unsafeSetCompWhitespaceRight :: [Whitespace]
   }
   | Set
-  { _exprAnn :: a
-  , _unsafeSetWhitespaceLeft :: [Whitespace]
-  , _unsafeSetValues :: CommaSep1' (Expr a)
+  { _exprAnn                  :: a
+  , _unsafeSetWhitespaceLeft  :: [Whitespace]
+  , _unsafeSetValues          :: CommaSep1' (Expr a)
   , _unsafeSetWhitespaceRight :: [Whitespace]
   }
   | Deref
-  { _exprAnn :: a
+  { _exprAnn                   :: a
   -- expr
-  , _unsafeDerefValueLeft :: Expr a
+  , _unsafeDerefValueLeft      :: Expr a
   -- . spaces
   , _unsafeDerefWhitespaceLeft :: [Whitespace]
   -- ident
-  , _unsafeDerefValueRight :: Ident '[] a
+  , _unsafeDerefValueRight     :: Ident '[] a
   }
   | Subscript
-  { _exprAnn :: a
+  { _exprAnn                        :: a
   -- expr
-  , _unsafeSubscriptValueLeft :: Expr a
+  , _unsafeSubscriptValueLeft       :: Expr a
   -- [ spaces
-  , _unsafeSubscriptWhitespaceLeft :: [Whitespace]
+  , _unsafeSubscriptWhitespaceLeft  :: [Whitespace]
   -- expr
-  , _unsafeSubscriptValueRight :: CommaSep1' (Subscript a)
+  , _unsafeSubscriptValueRight      :: CommaSep1' (Subscript a)
   -- ] spaces
   , _unsafeSubscriptWhitespaceRight :: [Whitespace]
   }
   | Call
-  { _exprAnn :: a
+  { _exprAnn                   :: a
   -- expr
-  , _unsafeCallFunction :: Expr a
+  , _unsafeCallFunction        :: Expr a
   -- ( spaces
-  , _unsafeCallWhitespaceLeft :: [Whitespace]
+  , _unsafeCallWhitespaceLeft  :: [Whitespace]
   -- exprs
-  , _unsafeCallArguments :: Maybe (CommaSep1' (Arg a))
+  , _unsafeCallArguments       :: Maybe (CommaSep1' (Arg a))
   -- ) spaces
   , _unsafeCallWhitespaceRight :: [Whitespace]
   }
   | None
-  { _exprAnn :: a
+  { _exprAnn              :: a
   , _unsafeNoneWhitespace :: [Whitespace]
   }
   | Ellipsis
-  { _exprAnn :: a
+  { _exprAnn                  :: a
   , _unsafeEllipsisWhitespace :: [Whitespace]
   }
   | BinOp
-  { _exprAnn :: a
-  , _unsafeBinOpExprLeft :: Expr a
-  , _unsafeBinOpOp :: BinOp a
+  { _exprAnn              :: a
+  , _unsafeBinOpExprLeft  :: Expr a
+  , _unsafeBinOpOp        :: BinOp a
   , _unsafeBinOpExprRight :: Expr a
   }
   | UnOp
-  { _exprAnn :: a
-  , _unsafeUnOpOp :: UnOp a
+  { _exprAnn         :: a
+  , _unsafeUnOpOp    :: UnOp a
   , _unsafeUnOpValue :: Expr a
   }
   | Parens
-  { _exprAnn :: a
+  { _exprAnn                     :: a
   -- ( spaces
-  , _unsafeParensWhitespaceLeft :: [Whitespace]
+  , _unsafeParensWhitespaceLeft  :: [Whitespace]
   -- expr
-  , _unsafeParensValue :: Expr a
+  , _unsafeParensValue           :: Expr a
   -- ) spaces
   , _unsafeParensWhitespaceAfter :: [Whitespace]
   }
   | Ident
-  { _exprAnn :: a
+  { _exprAnn          :: a
   , _unsafeIdentValue :: Ident '[] a
   }
   | Int
-  { _exprAnn :: a
-  , _unsafeIntValue :: IntLiteral a
+  { _exprAnn             :: a
+  , _unsafeIntValue      :: IntLiteral a
   , _unsafeIntWhitespace :: [Whitespace]
   }
   | Float
-  { _exprAnn :: a
-  , _unsafeFloatValue :: FloatLiteral a
+  { _exprAnn               :: a
+  , _unsafeFloatValue      :: FloatLiteral a
   , _unsafeFloatWhitespace :: [Whitespace]
   }
   | Imag
-  { _exprAnn :: a
-  , _unsafeImagValue :: ImagLiteral a
+  { _exprAnn              :: a
+  , _unsafeImagValue      :: ImagLiteral a
   , _unsafeImagWhitespace :: [Whitespace]
   }
   | Bool
-  { _exprAnn :: a
-  , _unsafeBoolValue :: Bool
+  { _exprAnn              :: a
+  , _unsafeBoolValue      :: Bool
   , _unsafeBoolWhitespace :: [Whitespace]
   }
   | String
-  { _exprAnn :: a
+  { _exprAnn                  :: a
   , _unsafeStringLiteralValue :: NonEmpty (StringLiteral a)
   }
   | Tuple
-  { _exprAnn :: a
+  { _exprAnn               :: a
   -- expr
-  , _unsafeTupleHead :: Expr a
+  , _unsafeTupleHead       :: Expr a
   -- , spaces
   , _unsafeTupleWhitespace :: Comma
   -- [exprs]
-  , _unsafeTupleTail :: Maybe (CommaSep1' (Expr a))
+  , _unsafeTupleTail       :: Maybe (CommaSep1' (Expr a))
   }
   | Not
-  { _exprAnn :: a
+  { _exprAnn             :: a
   , _unsafeNotWhitespace :: [Whitespace]
-  , _unsafeNotValue :: Expr a
+  , _unsafeNotValue      :: Expr a
   }
   | Generator
-  { _exprAnn :: a
+  { _exprAnn        :: a
   , _generatorValue :: Comprehension Expr a
   }
   | Await
-  { _exprAnn :: a
+  { _exprAnn               :: a
   , _unsafeAwaitWhitespace :: [Whitespace]
-  , _unsafeAwaitValue :: Expr a
+  , _unsafeAwaitValue      :: Expr a
   }
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
@@ -540,36 +543,36 @@ exprAnn =
         Await a _ _ -> a)
     (\e ann ->
       case e of
-        Unit _ a b -> Unit ann a b
-        StarExpr _ a b -> StarExpr ann a b
-        Lambda _ a b c d -> Lambda ann a b c d
-        Yield _ a b -> Yield ann a b
-        YieldFrom ann a b c -> YieldFrom ann a b c
+        Unit _ a b            -> Unit ann a b
+        StarExpr _ a b        -> StarExpr ann a b
+        Lambda _ a b c d      -> Lambda ann a b c d
+        Yield _ a b           -> Yield ann a b
+        YieldFrom ann a b c   -> YieldFrom ann a b c
         Ternary ann a b c d e -> Ternary ann a b c d e
-        None _ a -> None ann a
-        Ellipsis _ a -> Ellipsis ann a
-        List _ a b c -> List ann a b c
-        ListComp _ a b c -> ListComp ann a b c
-        Deref _ a b c -> Deref ann a b c
-        Subscript _ a b c d -> Subscript ann a b c d
-        Call _ a b c d -> Call ann a b c d
-        BinOp _ a b c -> BinOp ann a b c
-        UnOp _ a b -> UnOp ann a b
-        Parens _ a b c -> Parens ann a b c
-        Ident _ b -> Ident ann b
-        Int _ a b -> Int ann a b
-        Float _ a b -> Float ann a b
-        Imag _ a b -> Imag ann a b
-        Bool _ a b -> Bool ann a b
-        String _ a -> String ann a
-        Not _ a b -> Not ann a b
-        Tuple _ a b c -> Tuple ann a b c
-        DictComp _ a b c -> DictComp ann a b c
-        Dict _ a b c -> Dict ann a b c
-        SetComp _ a b c -> SetComp ann a b c
-        Set _ a b c -> Set ann a b c
-        Generator _ a -> Generator ann a
-        Await _ a b -> Not ann a b)
+        None _ a              -> None ann a
+        Ellipsis _ a          -> Ellipsis ann a
+        List _ a b c          -> List ann a b c
+        ListComp _ a b c      -> ListComp ann a b c
+        Deref _ a b c         -> Deref ann a b c
+        Subscript _ a b c d   -> Subscript ann a b c d
+        Call _ a b c d        -> Call ann a b c d
+        BinOp _ a b c         -> BinOp ann a b c
+        UnOp _ a b            -> UnOp ann a b
+        Parens _ a b c        -> Parens ann a b c
+        Ident _ b             -> Ident ann b
+        Int _ a b             -> Int ann a b
+        Float _ a b           -> Float ann a b
+        Imag _ a b            -> Imag ann a b
+        Bool _ a b            -> Bool ann a b
+        String _ a            -> String ann a
+        Not _ a b             -> Not ann a b
+        Tuple _ a b c         -> Tuple ann a b c
+        DictComp _ a b c      -> DictComp ann a b c
+        Dict _ a b c          -> Dict ann a b c
+        SetComp _ a b c       -> SetComp ann a b c
+        Set _ a b c           -> Set ann a b c
+        Generator _ a         -> Generator ann a
+        Await _ a b           -> Not ann a b)
 
 data Suite a
   -- ':' <space> smallStatement
@@ -584,8 +587,8 @@ data Suite a
 data Block a
   = Block
   { _blockBlankLines :: [(Blank a, Newline)]
-  , _blockHead :: Statement a
-  , _blockTail :: [Either (Blank a, Newline) (Statement a)]
+  , _blockHead       :: Statement a
+  , _blockTail       :: [Either (Blank a, Newline) (Statement a)]
   } deriving (Eq, Show)
 
 instance Functor Block where
@@ -610,27 +613,27 @@ instance Traversable Block where
 
 data WithItem a
   = WithItem
-  { _withItemAnn :: a
-  , _withItemValue :: Expr a
+  { _withItemAnn    :: a
+  , _withItemValue  :: Expr a
   , _withItemBinder :: Maybe ([Whitespace], Expr a)
   }
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 data Decorator a
   = Decorator
-  { _decoratorAnn :: a
-  , _decoratorIndents :: Indents a
-  , _decoratorAt :: At
-  , _decoratorExpr :: Expr a
-  , _decoratorComment :: Maybe (Comment a)
-  , _decoratorNewline :: Newline
+  { _decoratorAnn        :: a
+  , _decoratorIndents    :: Indents a
+  , _decoratorAt         :: At
+  , _decoratorExpr       :: Expr a
+  , _decoratorComment    :: Maybe (Comment a)
+  , _decoratorNewline    :: Newline
   , _decoratorBlankLines :: [(Blank a, Newline)]
   }
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 data ExceptAs a
   = ExceptAs
-  { _exceptAsAnn :: a
+  { _exceptAsAnn  :: a
   , _exceptAsExpr :: Expr a
   , _exceptAsName :: Maybe ([Whitespace], Ident '[] a)
   }
@@ -759,9 +762,9 @@ fromIR_arg
   -> Validation (NonEmpty e) (Syntax.Arg '[] a)
 fromIR_arg a =
   case a of
-    PositionalArg a b -> Syntax.PositionalArg (Ann a) <$> fromIR_expr b
-    KeywordArg a b c d -> Syntax.KeywordArg (Ann a) b c <$> fromIR_expr d
-    StarArg a b c -> Syntax.StarArg (Ann a) b <$> fromIR_expr c
+    PositionalArg a b   -> Syntax.PositionalArg (Ann a) <$> fromIR_expr b
+    KeywordArg a b c d  -> Syntax.KeywordArg (Ann a) b c <$> fromIR_expr d
+    StarArg a b c       -> Syntax.StarArg (Ann a) b <$> fromIR_expr c
     DoubleStarArg a b c -> Syntax.DoubleStarArg (Ann a) b <$> fromIR_expr c
 
 fromIR_decorator
@@ -877,9 +880,10 @@ fromIR_SimpleStatement
   -> Validation (NonEmpty e) (Syntax.SimpleStatement '[] a)
 fromIR_SimpleStatement ex =
   case ex of
-    Assign a b c ->
+    Assign a b t c ->
       Syntax.Assign (Ann a) <$>
       fromIR_expr b <*>
+      traverseOf traverse fromIR_expr t <*>
       traverseOf (traverse._2) fromIR_expr c
     Return a b c -> Syntax.Return (Ann a) b <$> traverse fromIR_expr c
     Expr a b -> Syntax.Expr (Ann a) <$> fromIR_expr b

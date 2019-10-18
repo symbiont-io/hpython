@@ -5,6 +5,7 @@ import Hedgehog
 import Control.Monad (void)
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.Text as Text
+import Debug.Trace
 
 import Language.Python.DSL
 import Language.Python.Render
@@ -31,6 +32,15 @@ prop_fulltrip_1 =
     tree <- shouldBeParseSuccess parseStatement str
 
     showStatement tree === str
+
+prop_fulltrip_1_1 :: Property
+prop_fulltrip_1_1 =
+  withTests 1 . property $ do
+    let str = "def a(x : str, y : int = 2):\n   return x + str(y)"
+
+    tree <- shouldBeParseSuccess parseStatement str
+
+    trace (show tree) $ showStatement tree === str
 
 prop_fulltrip_2 :: Property
 prop_fulltrip_2 =

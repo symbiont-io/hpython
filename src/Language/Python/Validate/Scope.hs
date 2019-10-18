@@ -1,11 +1,13 @@
-{-# language DataKinds, TypeOperators #-}
-{-# language DeriveFunctor #-}
-{-# language FlexibleContexts #-}
-{-# language RankNTypes #-}
-{-# language LambdaCase #-}
-{-# language OverloadedLists #-}
-{-# language ScopedTypeVariables, TypeApplications #-}
-{-# language MultiParamTypeClasses #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DeriveFunctor         #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedLists       #-}
+{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeOperators         #-}
 
 {-|
 Module      : Language.Python.Validate.Scope
@@ -58,28 +60,28 @@ where
 import Data.Validation
 
 import Control.Lens.Cons (snoc)
-import Control.Lens.Fold ((^..), toListOf, folded)
-import Control.Lens.Getter ((^.), to, getting)
+import Control.Lens.Fold (folded, toListOf, (^..))
+import Control.Lens.Getter (getting, to, (^.))
 import Control.Lens.Plated (cosmos)
-import Control.Lens.Prism (_Right, _Just)
-import Control.Lens.Review ((#))
+import Control.Lens.Prism (_Just, _Right)
+import Control.Lens.Review (( # ))
 import Control.Lens.Setter (mapped, over)
-import Control.Lens.Tuple (_2, _3)
 import Control.Lens.Traversal (traverseOf)
-import Control.Monad.State (State, evalState, modify, get, put)
-import Control.Monad.Reader (ReaderT, runReaderT, ask, local)
+import Control.Lens.Tuple (_2, _3)
+import Control.Monad.Reader (ReaderT, ask, local, runReaderT)
+import Control.Monad.State (State, evalState, get, modify, put)
 import Data.Bitraversable (bitraverse)
 import Data.ByteString (ByteString)
 import Data.Coerce (coerce)
 import Data.Foldable (toList, traverse_)
-import Data.List.NonEmpty (NonEmpty(..))
+import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict (Map)
 import Data.Maybe (isJust)
-import Data.Sequence ((|>), Seq)
+import Data.Sequence (Seq, (|>))
 import Data.String (fromString)
 import Data.Type.Set (Nub)
-import Data.Validate.Monadic
-  (ValidateM(..), runValidateM, bindVM, liftVM0, liftVM1, errorVM1)
+import Data.Validate.Monadic (ValidateM (..), bindVM, errorVM1, liftVM0,
+                              liftVM1, runValidateM)
 import Unsafe.Coerce (unsafeCoerce)
 
 import qualified Data.List.NonEmpty as NonEmpty
@@ -89,10 +91,10 @@ import Data.Sequence as Seq
 import Language.Python.Optics
 import Language.Python.Optics.Validated (unvalidated)
 import Language.Python.Syntax.Ann
-import Language.Python.Syntax.Statement
 import Language.Python.Syntax.Expr
 import Language.Python.Syntax.Ident
 import Language.Python.Syntax.Module
+import Language.Python.Syntax.Statement
 import Language.Python.Validate.Scope.Error
 
 data Scope
@@ -106,7 +108,7 @@ data Level
 data Entry a
   = Entry
   { _entryValue :: a
-  , _entryPath :: !(Seq Level)
+  , _entryPath  :: !(Seq Level)
   } deriving (Eq, Show, Functor)
 
 type ValidateScope ann e
@@ -156,7 +158,7 @@ inScope :: String -> ValidateScope ann e Bool
 inScope = fmap isJust . lookupScope
 
 lookupScope :: String -> ValidateScope ann e (Maybe (Entry ann))
-lookupScope s = Map.lookup (fromString s) <$> liftVM0 get 
+lookupScope s = Map.lookup (fromString s) <$> liftVM0 get
 
 validateExceptAsScope
   :: AsScopeError e a
@@ -208,7 +210,7 @@ parallelList ::
   (x -> ValidateScope a e y) ->
   [x] ->
   ValidateScope a e [y]
-parallelList _ [] = pure []
+parallelList _ []     = pure []
 parallelList f (x:xs) = uncurry (:) <$> parallel2 (f x) (parallelList f xs)
 
 parallelNonEmpty ::
@@ -343,9 +345,10 @@ validateSimpleStatementScope (Raise a ws f) =
     f
 validateSimpleStatementScope (Return a ws e) = Return a ws <$> traverse validateExprScope e
 validateSimpleStatementScope (Expr a e) = Expr a <$> validateExprScope e
-validateSimpleStatementScope (Assign a l rs) =
+validateSimpleStatementScope (Assign a l mty rs) =
   Assign a <$>
   validateAssignExprScope l <*>
+  traverseOf traverse validateExprScope mty <*>
   ((\a b -> case a of; [] -> b :| []; a : as -> a :| snoc as b) <$>
    traverseOf (traverse._2) validateAssignExprScope (NonEmpty.init rs) <*>
    (\(ws, b) -> (,) ws <$> validateExprScope b) (NonEmpty.last rs))

@@ -945,15 +945,17 @@ simpleStatement =
          maybe
            (Expr (a ^. exprAnn) a)
            (either
-              (Assign (a ^. exprAnn) a)
+              (uncurry $ Assign (a ^. exprAnn) a)
               (uncurry $ AugAssign (a ^. exprAnn) a))) <$>
       exprOrStarList space <*>
       optional
         (Left <$>
-         some1
+          ((,) <$>
+           (fmap snd <$> optional tyAnn) <*>
+           some1
            ((,) <$>
-            (snd <$> equals space) <*>
-            (yieldExpr space <|> exprOrStarList space))
+             (snd <$> equals space) <*>
+             (yieldExpr space <|> exprOrStarList space)))
 
            <|>
 
@@ -1291,7 +1293,7 @@ arg =
             optional $ snd <$> token anySpace (\case; TkEq{} -> True; _ -> False) "="
           case eqSpaces of
             Nothing -> pure $ PositionalArg ann e
-            Just s -> KeywordArg ann ident s <$> expr anySpace
+            Just s  -> KeywordArg ann ident s <$> expr anySpace
         _ -> pure $ PositionalArg (e ^. exprAnn) e)
 
   <|>

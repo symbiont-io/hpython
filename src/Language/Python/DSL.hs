@@ -11,16 +11,18 @@ passing @['line_' 'pass_']@
 -}
 
 
-{-# language DataKinds #-}
-{-# language FlexibleContexts #-}
-{-# language MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances #-}
-{-# language LambdaCase #-}
-{-# language RankNTypes #-}
-{-# language RecordWildCards #-}
-{-# language TemplateHaskell #-}
-{-# language TypeApplications #-}
-{-# language TypeFamilies #-}
-{-# language UndecidableInstances #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE LambdaCase             #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE RankNTypes             #-}
+{-# LANGUAGE RecordWildCards        #-}
+{-# LANGUAGE TemplateHaskell        #-}
+{-# LANGUAGE TypeApplications       #-}
+{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE UndecidableInstances   #-}
 module Language.Python.DSL
   ( (&)
   , Raw
@@ -122,6 +124,7 @@ module Language.Python.DSL
     -- ** Assignment
   , chainEq
   , (.=)
+  , (.:=)
   , (.+=)
   , (.-=)
   , (.*=)
@@ -406,23 +409,23 @@ module Language.Python.DSL
 where
 
 import Control.Applicative ((<|>))
-import Control.Lens.Fold ((^..), (^?), folded, lengthOf)
-import Control.Lens.Getter ((^.), to)
+import Control.Lens.Fold (folded, lengthOf, (^..), (^?))
+import Control.Lens.Getter (to, (^.))
 import Control.Lens.Iso (from)
 import Control.Lens.Lens (Lens')
-import Control.Lens.Prism (_Right, _Just)
-import Control.Lens.Review ((#))
-import Control.Lens.Setter ((.~), (<>~), (?~), (%~), Setter', set, over, mapped)
+import Control.Lens.Prism (_Just, _Right)
+import Control.Lens.Review (( # ))
+import Control.Lens.Setter (Setter', mapped, over, set, (%~), (.~), (<>~), (?~))
 import Control.Lens.TH (makeWrapped)
 import Control.Lens.Traversal (Traversal', traverseOf)
 import Control.Lens.Tuple (_2)
 import Control.Lens.Wrapped (_Wrapped)
 import Data.Foldable (toList)
 import Data.Function ((&))
-import Data.String (fromString)
-import Data.List.NonEmpty (NonEmpty(..))
+import Data.List.NonEmpty (NonEmpty (..))
 import Data.Maybe (fromMaybe)
 import Data.Semigroup ((<>))
+import Data.String (fromString)
 
 import Language.Python.Optics
 import Language.Python.Syntax.Ann
@@ -463,7 +466,7 @@ module_ [] = ModuleEmpty
 module_ (a:as) =
   case unLine a of
     Left (bl, nl) -> ModuleBlank bl nl $ module_ as
-    Right a -> ModuleStatement a $ module_ as
+    Right a       -> ModuleStatement a $ module_ as
 
 -- | One or more lines of Python code
 newtype Line v a
@@ -965,7 +968,7 @@ call_ :: Raw Expr -> [Raw Arg] -> Raw Expr
 call_ expr args =
   _Call #
   (mkCall expr)
-  { _callArguments = 
+  { _callArguments =
     case args of
       [] -> Nothing
       a:as -> Just $ (a, zip (repeat (MkComma [Space])) as, Nothing) ^. _CommaSep1'
@@ -1243,32 +1246,32 @@ infixl 2 .|
 infixl 3 .^
 
 -- | @a & b@
-(.&) :: Raw Expr -> Raw Expr -> Raw Expr 
+(.&) :: Raw Expr -> Raw Expr -> Raw Expr
 (.&) = mkBinOp $ BitAnd (Ann ())
 infixl 4 .&
 
 -- | @a << b@
-(.<<) :: Raw Expr -> Raw Expr -> Raw Expr 
+(.<<) :: Raw Expr -> Raw Expr -> Raw Expr
 (.<<) = mkBinOp $ ShiftLeft (Ann ())
 infixl 5 .<<
 
 -- | @a >> b@
-(.>>) :: Raw Expr -> Raw Expr -> Raw Expr 
+(.>>) :: Raw Expr -> Raw Expr -> Raw Expr
 (.>>) = mkBinOp $ ShiftRight (Ann ())
 infixl 5 .>>
 
 -- | @a + b@
-(.+) :: Raw Expr -> Raw Expr -> Raw Expr 
+(.+) :: Raw Expr -> Raw Expr -> Raw Expr
 (.+) = (+)
 infixl 6 .+
 
 -- | @a - b@
-(.-) :: Raw Expr -> Raw Expr -> Raw Expr 
+(.-) :: Raw Expr -> Raw Expr -> Raw Expr
 (.-) = (-)
 infixl 6 .-
 
 -- | @a * b@
-(.*) :: Raw Expr -> Raw Expr -> Raw Expr 
+(.*) :: Raw Expr -> Raw Expr -> Raw Expr
 (.*) = (*)
 infixl 7 .*
 
@@ -1327,7 +1330,7 @@ linesToBlock = go
     go [] = Block [] pass_ []
     go [y] =
       case unLine y of
-        Left l -> Block [l] pass_ []
+        Left l   -> Block [l] pass_ []
         Right st -> Block [] st []
     go (y:ys) =
       case unLine y of
@@ -1374,15 +1377,15 @@ mkIf cond body =
 
 instance BodySyntax Elif where
   body = elifBody
-  body_ = mkBody_ elifIndents elifBody 
+  body_ = mkBody_ elifIndents elifBody
 
 instance BodySyntax Else where
   body = elseBody
-  body_ = mkBody_ elseIndents elseBody 
+  body_ = mkBody_ elseIndents elseBody
 
 instance BodySyntax If where
   body = ifBody
-  body_ = mkBody_ ifIndents ifBody 
+  body_ = mkBody_ ifIndents ifBody
 
 -- |
 -- @'if_' :: 'Raw' 'Expr' -> ['Raw' 'Line'] -> 'Raw' 'If'@
@@ -1573,7 +1576,7 @@ chainEq t (a:as) =
   SmallStatement
     (Indents [] (Ann ()))
     (MkSmallStatement
-       (Assign (Ann ()) t $ (,) (MkEquals [Space]) <$> (a :| as))
+       (Assign (Ann ()) t Nothing $ (,) (MkEquals [Space]) <$> (a :| as))
        []
        Nothing
        Nothing
@@ -1585,12 +1588,25 @@ chainEq t (a:as) =
   SmallStatement
     (Indents [] (Ann ()))
     (MkSmallStatement
-       (Assign (Ann ()) (a & trailingWhitespace .~ [Space]) $ pure (MkEquals [Space], b))
+       (Assign (Ann ()) (a & trailingWhitespace .~ [Space]) Nothing $ pure (MkEquals [Space], b))
        []
        Nothing
        Nothing
        (Just LF))
 infix 0 .=
+
+-- | @a : ty = b@
+(.:=) :: Raw Expr -> Raw Expr -> Raw Expr -> Raw Statement
+(.:=) a ty b =
+  SmallStatement
+    (Indents [] (Ann ()))
+    (MkSmallStatement
+       (Assign (Ann ()) (a & trailingWhitespace .~ [Space]) (Just ty) $ pure (MkEquals [Space], b))
+       []
+       Nothing
+       Nothing
+       (Just LF))
+infix 0 .:=
 
 -- | @a += b@
 (.+=) :: Raw Expr -> Raw Expr -> Raw Statement
@@ -1791,7 +1807,7 @@ tryE_ = mkTryExcept
 
 instance BodySyntax TryFinally where
   body = tfBody
-  body_ = mkBody_ tfIndents tfBody 
+  body_ = mkBody_ tfIndents tfBody
 
 -- |
 -- @try ... finally@
@@ -1949,7 +1965,7 @@ mkClassDef name body =
 
 instance BodySyntax ClassDef where
   body = cdBody
-  body_ = mkBody_ cdIndents cdBody 
+  body_ = mkBody_ cdIndents cdBody
 
 instance DecoratorsSyntax ClassDef where
   decorators = cdDecorators
@@ -2023,7 +2039,7 @@ instance AsWithItem WithItem where
 
 instance BodySyntax With where
   body = withBody
-  body_ = mkBody_ withIndents withBody 
+  body_ = mkBody_ withIndents withBody
 
 instance AsyncSyntax With where
   async_ = withAsync ?~ pure Space
@@ -2294,4 +2310,4 @@ subs_ a e =
           :: Raw TupleItem
           -> Maybe (Raw Subscript)
         fromTupleItem (TupleItem _ a) = mkSlice a <|> pure (SubscriptExpr a)
-        fromTupleItem _ = Nothing
+        fromTupleItem _               = Nothing

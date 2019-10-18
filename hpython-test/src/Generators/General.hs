@@ -8,9 +8,9 @@ import Control.Lens.Getter
 import Control.Lens.Iso (from)
 import Control.Lens.Review (review)
 
-import           Hedgehog
-import qualified Hedgehog.Gen                    as Gen
-import qualified Hedgehog.Range                  as Range
+import Hedgehog
+import qualified Hedgehog.Gen as Gen
+import qualified Hedgehog.Range as Range
 
 import Language.Python.DSL
 import Language.Python.Optics
@@ -18,14 +18,14 @@ import Language.Python.Syntax.Ann
 import Language.Python.Syntax.Expr
 import Language.Python.Syntax.Import
 import Language.Python.Syntax.Module
-import Language.Python.Syntax.Operator.Binary
 import Language.Python.Syntax.ModuleNames
+import Language.Python.Syntax.Operator.Binary
 import Language.Python.Syntax.Statement
 import Language.Python.Syntax.Strings
 import Language.Python.Syntax.Whitespace
 
-import           Generators.Common
-import           Generators.Sized
+import Generators.Common
+import Generators.Sized
 
 genBlank :: MonadGen m => m (Blank ())
 genBlank = Blank (Ann ()) <$> genWhitespaces <*> Gen.maybe genComment
@@ -324,10 +324,10 @@ genSimpleStatement =
     , Continue (Ann ()) <$> genWhitespaces
     ]
     [ Expr (Ann ()) <$> genExpr
-    , sized2
-        (Assign (Ann ()))
-        genExpr
-        (sizedNonEmpty ((,) <$> genEquals <*> genExpr))
+    , Assign (Ann ()) <$>
+      genExpr <*>
+      (sizedMaybe genExpr) <*>
+      (sizedNonEmpty ((,) <$> genEquals <*> genExpr))
     , sized2M
         (\a b -> (\aa -> AugAssign (Ann ()) a aa b) <$> genAugAssign)
         genExpr
@@ -437,7 +437,7 @@ genCompoundStatement =
          (,,) <$> genIndents <*> genWhitespaces <*>
          genSuite genSimpleStatement genBlock)
     , sized2M
-        (\a b -> 
+        (\a b ->
            TryFinally (Ann ()) <$>
            genIndents <*>
            genWhitespaces <*>

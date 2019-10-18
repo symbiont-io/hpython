@@ -1,11 +1,18 @@
-{-# language TemplateHaskell #-}
-{-# language DataKinds, KindSignatures #-}
-{-# language MultiParamTypeClasses, FlexibleInstances #-}
-{-# language DeriveFunctor, DeriveFoldable, DeriveTraversable, DeriveGeneric #-}
-{-# language InstanceSigs, ScopedTypeVariables, TypeApplications #-}
-{-# language TypeFamilies #-}
-{-# language LambdaCase #-}
-{-# language UndecidableInstances #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DeriveFoldable        #-}
+{-# LANGUAGE DeriveFunctor         #-}
+{-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE DeriveTraversable     #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE InstanceSigs          #-}
+{-# LANGUAGE KindSignatures        #-}
+{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
 {-|
 Module      : Language.Python.Syntax.Statement
@@ -57,11 +64,11 @@ where
 
 import Control.Lens.Cons (_last)
 import Control.Lens.Fold (foldMapOf, folded)
-import Control.Lens.Getter ((^.), to, view)
+import Control.Lens.Getter (to, view, (^.))
 import Control.Lens.Lens (Lens')
-import Control.Lens.Plated (Plated(..), gplate)
+import Control.Lens.Plated (Plated (..), gplate)
 import Control.Lens.Prism (_Right)
-import Control.Lens.Setter ((.~), over, mapped)
+import Control.Lens.Setter (mapped, over, (.~))
 import Control.Lens.TH (makeLenses)
 import Control.Lens.Traversal (Traversal, Traversal1, traverseOf)
 import Control.Lens.Tuple (_1, _2, _3, _4)
@@ -71,7 +78,7 @@ import Data.Bitraversable (bitraverse)
 import Data.Coerce (coerce)
 import Data.Functor.Apply ((<.>))
 import Data.Generics.Product.Typed (typed)
-import Data.List.NonEmpty (NonEmpty(..))
+import Data.List.NonEmpty (NonEmpty (..))
 import Data.Maybe (isNothing)
 import Data.Monoid ((<>))
 import GHC.Generics (Generic)
@@ -114,8 +121,8 @@ class HasStatements s => HasStatements1 s where
 data Block (v :: [*]) a
   = Block
   { _blockBlankLines :: [(Blank a, Newline)] -- ^ Blank lines at the beginning of the block
-  , _blockHead :: Statement v a -- ^ The first statement of the block
-  , _blockTail :: [Either (Blank a, Newline) (Statement v a)] -- ^ The remaining items of the block, which may be statements or blank lines
+  , _blockHead       :: Statement v a -- ^ The first statement of the block
+  , _blockTail       :: [Either (Blank a, Newline) (Statement v a)] -- ^ The remaining items of the block, which may be statements or blank lines
   } deriving (Eq, Show, Generic)
 
 instance Functor (Block v) where
@@ -143,7 +150,7 @@ class HasBlocks s where
   _Blocks :: Traversal (s v a) (s '[] a) (Block v a) (Block '[] a)
 
 instance HasBlocks Suite where
-  _Blocks _ (SuiteOne a b c) = pure $ SuiteOne a b (c ^. unvalidated)
+  _Blocks _ (SuiteOne a b c)      = pure $ SuiteOne a b (c ^. unvalidated)
   _Blocks f (SuiteMany a b c d e) = SuiteMany a b c d <$> f e
 
 instance HasBlocks CompoundStatement where
@@ -206,7 +213,7 @@ instance HasStatements1 Block  where
           (go c cs)
 
 instance HasStatements Suite where
-  _Statements _ (SuiteOne a b c) = pure $ SuiteOne a b (c ^. unvalidated)
+  _Statements _ (SuiteOne a b c)      = pure $ SuiteOne a b (c ^. unvalidated)
   _Statements f (SuiteMany a b c d e) = SuiteMany a b c d <$> _Statements f e
 
 -- | See @simpl_stmt@ at <https://docs.python.org/3.5/reference/grammar.html>. The grammar
@@ -245,7 +252,7 @@ instance HasExprs SmallStatement where
 
 instance HasExprs Statement where
   _Exprs f (SmallStatement idnt a) = SmallStatement idnt <$> _Exprs f a
-  _Exprs f (CompoundStatement c) = CompoundStatement <$> _Exprs f c
+  _Exprs f (CompoundStatement c)   = CompoundStatement <$> _Exprs f c
 
 instance HasBlocks SmallStatement where
   _Blocks _ (MkSmallStatement a b c d e) =
@@ -256,7 +263,7 @@ instance HasBlocks SmallStatement where
       c d e
 
 instance HasBlocks Statement where
-  _Blocks f (CompoundStatement c) = CompoundStatement <$> _Blocks f c
+  _Blocks f (CompoundStatement c)   = CompoundStatement <$> _Blocks f c
   _Blocks f (SmallStatement idnt a) = SmallStatement idnt <$> _Blocks f a
 
 instance Plated (Statement '[] a) where
@@ -301,10 +308,10 @@ data SimpleStatement (v :: [*]) a
   --
   -- https://docs.python.org/3.5/reference/simple_stmts.html#expression-statements
   | Expr (Ann a) (Expr v a)
-  -- | @\<expr\> (\'=\' \<spaces\> \<expr\>)+@
+  -- | @\<expr\> (':' \<expr\>)? (\'=\' \<spaces\> \<expr\>)+@
   --
   -- https://docs.python.org/3.5/reference/simple_stmts.html#assignment-statements
-  | Assign (Ann a) (Expr v a) (NonEmpty (Equals, Expr v a))
+  | Assign (Ann a) (Expr v a) (Maybe (Expr v a)) (NonEmpty (Equals, Expr v a))
   -- | @\<expr\> \<augassign\> \<expr\>@
   --
   -- https://docs.python.org/3.5/reference/simple_stmts.html#augmented-assignment-statements
@@ -379,7 +386,7 @@ instance HasExprs SimpleStatement where
       x
   _Exprs f (Return a ws e) = Return a ws <$> traverse f e
   _Exprs f (Expr a e) = Expr a <$> f e
-  _Exprs f (Assign a e1 es) = Assign a <$> f e1 <*> traverseOf (traverse._2) f es
+  _Exprs f (Assign a e1 t es) = Assign a <$> f e1 <*> traverse f t <*> traverseOf (traverse._2) f es
   _Exprs f (AugAssign a e1 as e2) = AugAssign a <$> f e1 <*> pure as <*> f e2
   _Exprs _ p@Pass{} = pure $ p ^. unvalidated
   _Exprs _ p@Break{} = pure $ p ^. unvalidated
@@ -393,7 +400,7 @@ instance HasExprs SimpleStatement where
 -- | See <https://docs.python.org/3.5/reference/compound_stmts.html#the-try-statement>
 data ExceptAs (v :: [*]) a
   = ExceptAs
-  { _exceptAsAnn :: Ann a
+  { _exceptAsAnn  :: Ann a
   , _exceptAsExpr :: Expr v a -- ^ @\<expr\>@
   , _exceptAsName :: Maybe ([Whitespace], Ident v a) -- ^ @[\'as\' \<ident\>]@
   }
@@ -422,8 +429,8 @@ instance HasAnn (Suite v) where
 -- | See <https://docs.python.org/3.5/reference/compound_stmts.html#the-with-statement>
 data WithItem (v :: [*]) a
   = WithItem
-  { _withItemAnn :: Ann a
-  , _withItemValue :: Expr v a -- ^ @\<expr\>@
+  { _withItemAnn    :: Ann a
+  , _withItemValue  :: Expr v a -- ^ @\<expr\>@
   , _withItemBinder :: Maybe ([Whitespace], Expr v a) -- ^ @[\'as\' \<spaces\> \<expr\>]@
   }
   deriving (Eq, Show, Functor, Foldable, Traversable, Generic)
@@ -439,12 +446,12 @@ instance HasAnn (WithItem v) where
 -- <https://docs.python.org/3.5/glossary.html#term-decorator>
 data Decorator (v :: [*]) a
   = Decorator
-  { _decoratorAnn :: Ann a
-  , _decoratorIndents :: Indents a -- ^ Preceding indentation
-  , _decoratorAt :: At -- ^ @\'\@\' \<spaces\>@
-  , _decoratorExpr :: Expr v a -- ^ @\<expr\>@
-  , _decoratorComment :: Maybe (Comment a) -- ^ Trailing comment
-  , _decoratorNewline :: Newline -- ^ Trailing newline
+  { _decoratorAnn        :: Ann a
+  , _decoratorIndents    :: Indents a -- ^ Preceding indentation
+  , _decoratorAt         :: At -- ^ @\'\@\' \<spaces\>@
+  , _decoratorExpr       :: Expr v a -- ^ @\<expr\>@
+  , _decoratorComment    :: Maybe (Comment a) -- ^ Trailing comment
+  , _decoratorNewline    :: Newline -- ^ Trailing newline
   , _decoratorBlankLines :: [(Blank a, Newline)] -- ^ Trailing blank lines
   }
   deriving (Eq, Show, Functor, Foldable, Traversable, Generic)
@@ -459,27 +466,27 @@ data CompoundStatement (v :: [*]) a
   --
   -- https://docs.python.org/3.5/reference/compound_stmts.html#coroutine-function-definition
   = Fundef
-  { _csAnn :: Ann a
+  { _csAnn                    :: Ann a
   , _unsafeCsFundefDecorators :: [Decorator v a] -- ^ Preceding 'Decorator's
-  , _csIndents :: Indents a -- ^ Preceding indentation
-  , _unsafeCsFundefAsync :: Maybe (NonEmpty Whitespace) -- ^ @[\'async\' \<spaces\>]@
-  , _unsafeCsFundefDef :: NonEmpty Whitespace -- ^ @\'def\' \<spaces\>@
-  , _unsafeCsFundefName :: Ident v a -- ^ @\<ident\>@
-  , _unsafeCsFundefLeftParen :: [Whitespace] -- ^ @\'(\' \<spaces\>@
+  , _csIndents                :: Indents a -- ^ Preceding indentation
+  , _unsafeCsFundefAsync      :: Maybe (NonEmpty Whitespace) -- ^ @[\'async\' \<spaces\>]@
+  , _unsafeCsFundefDef        :: NonEmpty Whitespace -- ^ @\'def\' \<spaces\>@
+  , _unsafeCsFundefName       :: Ident v a -- ^ @\<ident\>@
+  , _unsafeCsFundefLeftParen  :: [Whitespace] -- ^ @\'(\' \<spaces\>@
   , _unsafeCsFundefParameters :: CommaSep (Param v a) -- ^ @\<parameters\>@
   , _unsafeCsFundefRightParen :: [Whitespace] -- ^ @\')\' \<spaces\>@
   , _unsafeCsFundefReturnType :: Maybe ([Whitespace], Expr v a) -- ^ @[\'->\' \<spaces\> \<expr\>]@
-  , _unsafeCsFundefBody :: Suite v a -- ^ @\<suite\>@
+  , _unsafeCsFundefBody       :: Suite v a -- ^ @\<suite\>@
   }
   -- | https://docs.python.org/3.5/reference/compound_stmts.html#the-if-statement
   | If
-  { _csAnn :: Ann a
-  , _csIndents :: Indents a -- ^ Preceding indentation
-  , _unsafeCsIfIf :: [Whitespace] -- ^ @\'if\' \<spaces\>@
-  , _unsafeCsIfCond :: Expr v a -- ^ @\<expr\>@
-  , _unsafeCsIfBody :: Suite v a -- ^ @\<suite\>@
+  { _csAnn           :: Ann a
+  , _csIndents       :: Indents a -- ^ Preceding indentation
+  , _unsafeCsIfIf    :: [Whitespace] -- ^ @\'if\' \<spaces\>@
+  , _unsafeCsIfCond  :: Expr v a -- ^ @\<expr\>@
+  , _unsafeCsIfBody  :: Suite v a -- ^ @\<suite\>@
   , _unsafeCsIfElifs :: [(Indents a, [Whitespace], Expr v a, Suite v a)] -- ^ @(\'elif\' \<spaces\> \<expr\> \<suite\>)*@
-  , _unsafeCsIfElse :: Maybe (Indents a, [Whitespace], Suite v a) -- ^ @[\'else\' \<spaces\> \<suite\>]@
+  , _unsafeCsIfElse  :: Maybe (Indents a, [Whitespace], Suite v a) -- ^ @[\'else\' \<spaces\> \<suite\>]@
   }
   -- | https://docs.python.org/3.5/reference/compound_stmts.html#the-while-statement
   | While
@@ -503,27 +510,27 @@ data CompoundStatement (v :: [*]) a
   }
   -- | https://docs.python.org/3.5/reference/compound_stmts.html#the-try-statement
   | TryFinally
-  { _csAnn :: Ann a
-  , _csIndents :: Indents a -- ^ Preceding indentation
-  , _unsafeCsTryFinallyTry :: [Whitespace] -- ^ @\'try\' \<spaces\>@
-  , _unsafeCsTryFinallyTryBody :: Suite v a -- ^ @\<suite\>@
+  { _csAnn                            :: Ann a
+  , _csIndents                        :: Indents a -- ^ Preceding indentation
+  , _unsafeCsTryFinallyTry            :: [Whitespace] -- ^ @\'try\' \<spaces\>@
+  , _unsafeCsTryFinallyTryBody        :: Suite v a -- ^ @\<suite\>@
   , _unsafeCsTryFinallyFinallyIndents :: Indents a
-  , _unsafeCsTryFinallyFinally :: [Whitespace] -- ^ @\'finally\' \<spaces\>@
-  , _unsafeCsTryFinallyFinallyBody :: Suite v a -- ^ @\<suite\>@
+  , _unsafeCsTryFinallyFinally        :: [Whitespace] -- ^ @\'finally\' \<spaces\>@
+  , _unsafeCsTryFinallyFinallyBody    :: Suite v a -- ^ @\<suite\>@
   }
   -- | https://docs.python.org/3.5/reference/compound_stmts.html#the-for-statement
   --
   -- https://docs.python.org/3.5/reference/compound_stmts.html#the-async-for-statement
   | For
-  { _csAnn :: Ann a
-  , _csIndents :: Indents a -- ^ Preceding indentation
-  , _unsafeCsForAsync :: Maybe (NonEmpty Whitespace) -- ^ @[\'async\' \<spaces\>]@
-  , _unsafeCsForFor :: [Whitespace] -- ^ @\'for\' \<spaces\>@
-  , _unsafeCsForBinder :: Expr v a -- ^ @\<expr\>@
-  , _unsafeCsForIn :: [Whitespace] -- ^ @\'in\' \<spaces\>@
+  { _csAnn                 :: Ann a
+  , _csIndents             :: Indents a -- ^ Preceding indentation
+  , _unsafeCsForAsync      :: Maybe (NonEmpty Whitespace) -- ^ @[\'async\' \<spaces\>]@
+  , _unsafeCsForFor        :: [Whitespace] -- ^ @\'for\' \<spaces\>@
+  , _unsafeCsForBinder     :: Expr v a -- ^ @\<expr\>@
+  , _unsafeCsForIn         :: [Whitespace] -- ^ @\'in\' \<spaces\>@
   , _unsafeCsForCollection :: CommaSep1' (Expr v a) -- ^ @\<exprs\>@
-  , _unsafeCsForBody :: Suite v a -- ^ @\<suite\>@
-  , _unsafeCsForElse :: Maybe (Indents a, [Whitespace], Suite v a) -- ^ @[\'else\' \<spaces\> \<suite\>]@
+  , _unsafeCsForBody       :: Suite v a -- ^ @\<suite\>@
+  , _unsafeCsForElse       :: Maybe (Indents a, [Whitespace], Suite v a) -- ^ @[\'else\' \<spaces\> \<suite\>]@
   }
   -- | https://docs.python.org/3.5/reference/compound_stmts.html#class-definitions
   | ClassDef
@@ -539,12 +546,12 @@ data CompoundStatement (v :: [*]) a
   --
   -- https://docs.python.org/3.5/reference/compound_stmts.html#the-async-with-statement
   | With
-  { _csAnn :: Ann a
-  , _csIndents :: Indents a -- ^ Preceding indentation
+  { _csAnn             :: Ann a
+  , _csIndents         :: Indents a -- ^ Preceding indentation
   , _unsafeCsWithAsync :: Maybe (NonEmpty Whitespace) -- ^ @[\'async\' \<spaces\>]@
-  , _unsafeCsWithWith :: [Whitespace] -- ^ @\'with\' \<spaces\>@
+  , _unsafeCsWithWith  :: [Whitespace] -- ^ @\'with\' \<spaces\>@
   , _unsafeCsWithItems :: CommaSep1 (WithItem v a) -- ^ @\<with_items\>@
-  , _unsafeCsWithBody :: Suite v a -- ^ @\<suite\>@
+  , _unsafeCsWithBody  :: Suite v a -- ^ @\<suite\>@
   }
   deriving (Eq, Show, Functor, Foldable, Traversable, Generic)
 
@@ -560,7 +567,7 @@ instance HasExprs Block where
     Block a <$> _Exprs f b <*> (traverse._Right._Exprs) f c
 
 instance HasExprs Suite where
-  _Exprs f (SuiteOne a b c) = (\c' -> SuiteOne a b c') <$> _Exprs f c
+  _Exprs f (SuiteOne a b c)      = (\c' -> SuiteOne a b c') <$> _Exprs f c
   _Exprs f (SuiteMany a b c d e) = SuiteMany a b c d <$> _Exprs f e
 
 instance HasExprs WithItem where
@@ -623,12 +630,12 @@ instance HasExprs CompoundStatement where
 instance HasTrailingNewline Statement where
   trailingNewline f x =
     case x of
-      SmallStatement a b -> SmallStatement a <$> trailingNewline f b
+      SmallStatement a b  -> SmallStatement a <$> trailingNewline f b
       CompoundStatement c -> CompoundStatement <$> trailingNewline f c
 
   setTrailingNewline s n =
     case s of
-      SmallStatement i a -> SmallStatement i $ setTrailingNewline a n
+      SmallStatement i a  -> SmallStatement i $ setTrailingNewline a n
       CompoundStatement c -> CompoundStatement $ setTrailingNewline c n
 
 instance HasTrailingNewline SmallStatement where
@@ -640,11 +647,11 @@ instance HasTrailingNewline SmallStatement where
 instance HasTrailingNewline Suite where
   trailingNewline f x =
     case x of
-      SuiteOne a b c -> SuiteOne a b <$> trailingNewline f c
+      SuiteOne a b c      -> SuiteOne a b <$> trailingNewline f c
       SuiteMany a b c d e -> SuiteMany a b c d <$> trailingNewline f e
   setTrailingNewline x n =
     case x of
-      SuiteOne a b c -> SuiteOne a b $ setTrailingNewline c n
+      SuiteOne a b c      -> SuiteOne a b $ setTrailingNewline c n
       SuiteMany a b c d e -> SuiteMany a b c d $ setTrailingNewline e n
 
 instance HasTrailingNewline Block where

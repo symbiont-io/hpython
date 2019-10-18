@@ -179,3 +179,10 @@ prop_syntax_16 =
   withTests 1 . property $ do
     let e = lambda_ [star_, star_, k_ "a" none_] (var_ "c")
     void . shouldBeFailure =<< syntaxValidateExpr e
+
+prop_syntax_17 :: Property
+prop_syntax_17 =
+  withTests 1 . property $ do
+    let str = "x : int = 12"
+    e <- shouldBeParseSuccess parseStatement str
+    void . shouldBeSuccess =<< syntaxValidateStatement (() <$ e)

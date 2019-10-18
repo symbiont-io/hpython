@@ -1,14 +1,17 @@
-{-# language DataKinds #-}
-{-# language GeneralizedNewtypeDeriving #-}
-{-# language FlexibleContexts #-}
-{-# language PolyKinds #-}
-{-# language TypeApplications #-}
-{-# language TypeOperators #-}
-{-# language TypeSynonymInstances, FlexibleInstances #-}
-{-# language TemplateHaskell, TypeFamilies, MultiParamTypeClasses #-}
-{-# language RankNTypes #-}
-{-# language LambdaCase #-}
-{-# language ScopedTypeVariables #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE TypeSynonymInstances       #-}
 
 {-|
 Module      : Language.Python.Validate.Syntax
@@ -616,7 +619,7 @@ validateExprSyntax (DictComp a ws1 comp ws2) =
   validateWhitespace (getAnn a) ws2
   where
     dictItem (DictUnpack a _ _) = errorVM1 (_InvalidDictUnpacking # getAnn a)
-    dictItem a = validateDictItemSyntax a
+    dictItem a                  = validateDictItemSyntax a
 validateExprSyntax (Dict a b c d) =
   Dict a b <$>
   liftVM1
@@ -631,7 +634,7 @@ validateExprSyntax (SetComp a ws1 comp ws2) =
   validateWhitespace (getAnn a) ws2
   where
     setItem (SetUnpack a _ _ _) = errorVM1 (_InvalidSetUnpacking # getAnn a)
-    setItem a = validateSetItemSyntax a
+    setItem a                   = validateSetItemSyntax a
 validateExprSyntax (Set a b c d) =
   Set a b <$>
   liftVM1
@@ -954,7 +957,7 @@ validateSimpleStatementSyntax (Return a ws expr) =
 validateSimpleStatementSyntax (Expr a expr) =
   Expr a <$>
   validateExprSyntax expr
-validateSimpleStatementSyntax (Assign a lvalue rs) =
+validateSimpleStatementSyntax (Assign a lvalue mty rs) =
   liftVM0 ask `bindVM` \sctxt ->
     let
       assigns =
@@ -966,6 +969,7 @@ validateSimpleStatementSyntax (Assign a lvalue rs) =
     in
       Assign a <$>
       validateAssignmentSyntax (getAnn a) lvalue <*>
+      traverseOf traverse validateExprSyntax mty <*>
       ((\a b -> case a of; [] -> pure b; a : as -> a :| (snoc as b)) <$>
        traverse
          (\(ws, b) ->
@@ -1032,7 +1036,7 @@ validateSimpleStatementSyntax (Nonlocal a ws ids) =
     Nothing -> errorVM1 (_NonlocalOutsideFunction # getAnn a)
     Just params ->
       case intersect params (ids ^.. folded.unvalidated.identValue) of
-        [] -> Nonlocal a ws <$> traverse validateIdentSyntax ids
+        []  -> Nonlocal a ws <$> traverse validateIdentSyntax ids
         bad -> errorVM1 (_ParametersNonlocal # (getAnn a, bad))
 validateSimpleStatementSyntax (Del a ws ids) =
   Del a ws <$>

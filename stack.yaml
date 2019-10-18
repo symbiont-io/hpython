@@ -1,6 +1,7 @@
 resolver: lts-12.5
 packages:
 - .
+- 'hpython-test'
 
 extra-deps:
 - generic-lens-1.1.0.0

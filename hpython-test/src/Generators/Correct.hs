@@ -1,7 +1,7 @@
-{-# language DataKinds #-}
-{-# language FlexibleContexts #-}
-{-# language LambdaCase #-}
-{-# language TemplateHaskell #-}
+{-# LANGUAGE DataKinds        #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase       #-}
+{-# LANGUAGE TemplateHaskell  #-}
 module Generators.Correct where
 
 import Control.Applicative
@@ -12,8 +12,8 @@ import Control.Lens.Iso (from)
 import Control.Lens.Plated
 import Control.Lens.Prism (_Just)
 import Control.Lens.Setter
-import Control.Lens.Tuple
 import Control.Lens.TH
+import Control.Lens.Tuple
 import Control.Monad.State
 import Data.Bifunctor (bimap)
 import Data.Function
@@ -22,9 +22,9 @@ import Data.Maybe
 import Data.Semigroup ((<>))
 import Hedgehog
 
+import qualified Data.List.NonEmpty as NonEmpty
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
-import qualified Data.List.NonEmpty as NonEmpty
 
 import GHC.Stack
 
@@ -34,8 +34,8 @@ import Language.Python.Syntax.CommaSep
 import Language.Python.Syntax.Expr
 import Language.Python.Syntax.Ident
 import Language.Python.Syntax.Import
-import Language.Python.Syntax.Operator.Binary
 import Language.Python.Syntax.ModuleNames
+import Language.Python.Syntax.Operator.Binary
 import Language.Python.Syntax.Statement
 import Language.Python.Syntax.Strings
 import Language.Python.Syntax.Whitespace
@@ -59,13 +59,13 @@ initialGenState =
 
 data GenState
   = GenState
-  { _inFunction :: Maybe ([String], Bool)
-  , _inGenerator :: Bool
-  , _currentNonlocals :: [String]
-  , _willBeNonlocals :: [String]
-  , _inLoop :: Bool
-  , _inClass :: Bool
-  , _inFinally :: Bool
+  { _inFunction         :: Maybe ([String], Bool)
+  , _inGenerator        :: Bool
+  , _currentNonlocals   :: [String]
+  , _willBeNonlocals    :: [String]
+  , _inLoop             :: Bool
+  , _inClass            :: Bool
+  , _inFinally          :: Bool
   , _currentIndentation :: Indents ()
   }
 makeLenses ''GenState
@@ -80,7 +80,7 @@ doDedent = do
   is <- use $ currentIndentation.indentsValue
   case is of
     [] -> pure ()
-    _ -> assign (currentIndentation.indentsValue) $ init is
+    _  -> assign (currentIndentation.indentsValue) $ init is
 
 localState :: MonadState s m => m a -> m a
 localState m = do
@@ -688,7 +688,7 @@ genSimpleStatement = do
          when (isJust isInFunction) $
            willBeNonlocals %= ((a ^.. folded._2.cosmos._Ident.identValue) ++)
          sizedBind ((,) <$> genEquals <*> genExpr) $ \b ->
-           pure $ Assign (Ann ()) (snd $ NonEmpty.head a) (NonEmpty.fromList $ snoc (NonEmpty.tail a) b)
+           pure $ Assign (Ann ()) (snd $ NonEmpty.head a) Nothing (NonEmpty.fromList $ snoc (NonEmpty.tail a) b)
      , sized2M
          (\a b -> AugAssign (Ann ()) a <$> genAugAssign <*> pure b)
          genAugAssignable
@@ -797,7 +797,7 @@ genCompoundStatement =
             genIdent <*> genWhitespaces <*> pure a <*>
             genWhitespaces <*> pure d <*> pure b
     , sized4M
-        (\a b c d -> 
+        (\a b c d ->
           If (Ann ()) <$>
             use currentIndentation <*>
             fmap NonEmpty.toList genWhitespaces1 <*> pure a <*>
@@ -850,7 +850,7 @@ genCompoundStatement =
         (do
           ls <- sizedList $
             sized2M
-            (\a b -> 
+            (\a b ->
                 (,,,) <$>
                 use currentIndentation <*>
                 (NonEmpty.toList <$> genWhitespaces1) <*>
@@ -863,7 +863,7 @@ genCompoundStatement =
             (genSuite genSimpleStatement genBlock)
           l <-
             sized2M
-              (\a b -> 
+              (\a b ->
                   (,,,) <$>
                   use currentIndentation <*>
                   (NonEmpty.toList <$> genWhitespaces1) <*>

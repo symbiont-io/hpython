@@ -1,22 +1,24 @@
 {-# options_ghc -fno-warn-unused-do-bind #-}
-{-# language DataKinds, TypeOperators, FlexibleContexts #-}
-{-# language OverloadedStrings #-}
+{-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeOperators     #-}
 
 module Main where
 
 import Control.Lens
 import Control.Monad.State
-import Data.List.NonEmpty
 import Data.Functor (($>))
+import Data.List.NonEmpty
 import Data.Text (Text)
-import Data.Validation (Validation(..), validation)
 import qualified Data.Text.IO as StrictText
+import Data.Validation (Validation (..), validation)
 import System.Directory
 import System.Exit
 import System.Process
 
 import Language.Python.Optics.Validated (unvalidated)
-import Language.Python.Parse (SrcInfo, parseStatement, parseExpr, parseExprList)
+import Language.Python.Parse (SrcInfo, parseExpr, parseExprList, parseStatement)
 import Language.Python.Parse.Error (ParseError)
 import Language.Python.Render
 import Language.Python.Syntax.Ann
@@ -30,8 +32,8 @@ import Hedgehog
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
-import qualified Generators.General as General
 import qualified Generators.Correct as Correct
+import qualified Generators.General as General
 
 import DSL (dslTests)
 import Printer (printerTests)
@@ -41,7 +43,7 @@ runPython3 :: (MonadTest m, MonadIO m) => FilePath -> Bool -> Text -> m ()
 runPython3 path shouldSucceed str = do
   () <- liftIO $ StrictText.writeFile path str
   (ec, sto, ste) <-
-    liftIO $ readProcessWithExitCode "python3.5" ["-m", "py_compile", path] ""
+    liftIO $ readProcessWithExitCode "python3" ["-m", "py_compile", path] ""
   annotateShow str
   annotateShow shouldSucceed
   annotateShow ec
@@ -52,11 +54,11 @@ runPython3 path shouldSucceed str = do
     --
     -- If the python repl would fail, then validation should fail
     -- If validation succeeds, then the python repl should succeed
-    (True, ExitSuccess) -> success
-    (True, ExitFailure{}) -> failure
+    (True, ExitSuccess)    -> success
+    (True, ExitFailure{})  -> failure
       -- | "SyntaxError" `isInfixOf` last (lines ste) -> failure
       -- | otherwise -> success
-    (False, ExitSuccess) -> success
+    (False, ExitSuccess)   -> success
     (False, ExitFailure{}) -> success
 
 syntax_expr :: FilePath -> Property
@@ -70,7 +72,7 @@ syntax_expr path =
         Success res ->
           case validateExprSyntax' res of
             Failure errs'' -> annotateShow errs'' $> False
-            Success _ -> pure True
+            Success _      -> pure True
     annotateShow rex
     runPython3
       path
@@ -88,7 +90,7 @@ syntax_statement path =
         Success res ->
           case validateStatementSyntax' res of
             Failure errs'' -> annotateShow errs'' $> False
-            Success _ -> pure True
+            Success _      -> pure True
     annotateShow rst
     runPython3 path shouldSucceed rst
 
@@ -103,7 +105,7 @@ syntax_modul path =
         Success res ->
           case validateModuleSyntax' res of
             Failure errs'' -> annotateShow errs'' $> False
-            Success _ -> pure True
+            Success _      -> pure True
     annotateShow rst
     runPython3 path shouldSucceed rst
 
@@ -135,7 +137,7 @@ correct_syntax_statement path =
       Success res ->
         case validateStatementSyntax' res of
           Failure errs' -> annotateShow errs' *> failure
-          Success _ -> runPython3 path True $ showStatement st
+          Success _     -> runPython3 path True $ showStatement st
 
 string_correct :: FilePath -> Property
 string_correct path =
