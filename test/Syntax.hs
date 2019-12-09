@@ -186,3 +186,11 @@ prop_syntax_17 =
     let str = "x : int = 12"
     e <- shouldBeParseSuccess parseStatement str
     void . shouldBeSuccess =<< syntaxValidateStatement (() <$ e)
+
+prop_syntax_string_interpolation :: Property
+prop_syntax_string_interpolation =
+  withTests 1 . property $ do
+    let str = "x = f'interpolated string{z}'"
+
+    e <- shouldBeParseSuccess parseStatement str
+    void . shouldBeSuccess =<< syntaxValidateStatement (() <$ e)

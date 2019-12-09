@@ -483,6 +483,16 @@ showToken t =
         quote <>
         renderPyChars qt st s <>
         quote
+    TkFormattedString sp st qt s _ ->
+      let
+        quote =
+          Text.pack $
+          (case st of; LongString -> replicate 3; ShortString -> pure) (showQuoteType qt)
+      in
+        showFormattedStringPrefix sp <>
+        quote <>
+        renderPyChars qt st s <>
+        quote
     TkBytes sp st qt s _ ->
       let
         quote =
@@ -687,6 +697,9 @@ renderStringLiteral (RawStringLiteral _ a b c d e) = do
   traverse_ renderWhitespace e
 renderStringLiteral (RawBytesLiteral _ a b c d e) = do
   singleton $ TkRawBytes a b c d ()
+  traverse_ renderWhitespace e
+renderStringLiteral (FormattedStringLiteral _ a b c d e) = do
+  singleton $ TkFormattedString a b c d ()
   traverse_ renderWhitespace e
 
 renderSubscript :: Subscript v a -> RenderOutput ()

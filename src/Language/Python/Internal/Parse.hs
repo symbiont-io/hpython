@@ -325,6 +325,7 @@ stringOrBytes ws =
   fmap (\vs -> String (view annot_ $ NonEmpty.head vs) vs) . some1 $
   (\case
      TkString sp qt st val ann -> StringLiteral (Ann ann) sp qt st val
+     TkFormattedString sp qt st val ann -> FormattedStringLiteral (Ann ann) sp qt st val
      TkBytes sp qt st val ann -> BytesLiteral (Ann ann) sp qt st val
      TkRawString sp st qt val ann -> RawStringLiteral (Ann ann) sp st qt val
      TkRawBytes sp st qt val ann -> RawBytesLiteral (Ann ann) sp st qt val
@@ -332,6 +333,7 @@ stringOrBytes ws =
   satisfy
     (\case
         TkString{} -> True
+        TkFormattedString{} -> True
         TkBytes{} -> True
         TkRawString{} -> True
         TkRawBytes{} -> True

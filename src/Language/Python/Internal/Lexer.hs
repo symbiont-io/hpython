@@ -117,30 +117,32 @@ parseComment =
   (\a b -> TkComment (MkComment (Ann b) a)) <$ char '#' <*>
   many (satisfy (`notElem` ['\r', '\n']))
 
+data Prefixes = SP StringPrefix
+              | RSP RawStringPrefix
+              | BP BytesPrefix
+              | RBP RawBytesPrefix
+              | FP FormattedPrefix
+
 stringOrBytesPrefix
   :: CharParsing m
-  => m (Either
-          (Either RawStringPrefix StringPrefix)
-          (Either RawBytesPrefix BytesPrefix))
+  => m Prefixes
 stringOrBytesPrefix =
-  (char 'r' *>
-   (Right (Left Prefix_rb) <$ char 'b' <|>
-    Right (Left Prefix_rB) <$ char 'B' <|>
-    pure (Left $ Left Prefix_r))) <|>
-  (char 'R' *>
-   (Right (Left Prefix_Rb) <$ char 'b' <|>
-    Right (Left Prefix_RB) <$ char 'B' <|>
-    pure (Left $ Left Prefix_R))) <|>
-  (char 'b' *>
-   (Right (Left Prefix_br) <$ char 'r' <|>
-    Right (Left Prefix_bR) <$ char 'R' <|>
-    pure (Right $ Right Prefix_b))) <|>
-  (char 'B' *>
-   (Right (Left Prefix_Br) <$ char 'r' <|>
-    Right (Left Prefix_BR) <$ char 'R' <|>
-    pure (Right $ Right Prefix_B))) <|>
-  (Left (Right Prefix_u) <$ char 'u') <|>
-  (Left (Right Prefix_U) <$ char 'U')
+  (text "rb" *> pure (RBP Prefix_rb)) <|>
+  (text "rB" *> pure (RBP Prefix_rB)) <|>
+  (text "Rb" *> pure (RBP Prefix_Rb)) <|>
+  (text "RB" *> pure (RBP Prefix_RB)) <|>
+  (text "br" *> pure (RBP Prefix_br)) <|>
+  (text "bR" *> pure (RBP Prefix_bR)) <|>
+  (text "BR" *> pure (RBP Prefix_BR)) <|>
+  (text "Br" *> pure (RBP Prefix_Br)) <|>
+  (char 'b' *> pure (BP Prefix_b)) <|>
+  (char 'B' *> pure (BP Prefix_B)) <|>
+  (char 'r' *> pure (RSP Prefix_r)) <|>
+  (char 'R' *> pure (RSP Prefix_R)) <|>
+  (char 'f' *> pure (FP Prefix_f)) <|>
+  (char 'F' *> pure (FP Prefix_F)) <|>
+  (char 'u' *> pure (SP Prefix_u)) <|>
+  (char 'U' *> pure (SP Prefix_U))
 
 rawStringChar :: CharParsing m => m [PyChar]
 rawStringChar =
@@ -385,6 +387,8 @@ parseToken =
     , TkComma <$ char ','
     , TkDot <$ char '.'
     , do
+        -- string literal between double quotes, either a single on or 3 double quotes
+        -- (""" ... """) for string embedding new-lines
         sp <- try $ optional stringOrBytesPrefix <* char '"'
         case sp of
           Nothing ->
@@ -393,33 +397,41 @@ parseToken =
             manyTill stringChar (text "\"\"\"")
             <|>
             TkString Nothing ShortString DoubleQuote <$> manyTill stringChar (char '"')
-          Just (Left (Left prefix)) ->
+          Just (RSP prefix) ->
             TkRawString prefix LongString DoubleQuote . concat <$
             text "\"\"" <*>
             manyTill rawStringChar (text "\"\"\"")
             <|>
             TkRawString prefix ShortString DoubleQuote . concat <$>
             manyTill rawStringChar (char '"')
-          Just (Left (Right prefix)) ->
+          Just (SP prefix) ->
             TkString (Just prefix) LongString DoubleQuote <$
             text "\"\"" <*>
             manyTill stringChar (text "\"\"\"")
             <|>
             TkString (Just prefix) ShortString DoubleQuote <$> manyTill stringChar (char '"')
-          Just (Right (Left prefix)) ->
+          Just (RBP prefix) ->
             TkRawBytes prefix LongString DoubleQuote . concat <$
             text "\"\"" <*>
             manyTill rawStringChar (text "\"\"\"")
             <|>
             TkRawBytes prefix ShortString DoubleQuote . concat <$>
             manyTill rawStringChar (char '"')
-          Just (Right (Right prefix)) ->
+          Just (BP prefix) ->
             TkBytes prefix LongString DoubleQuote <$
             text "\"\"" <*>
             manyTill stringChar (text "\"\"\"")
             <|>
             TkBytes prefix ShortString DoubleQuote <$> manyTill stringChar (char '"')
+          Just (FP prefix) ->
+            TkFormattedString prefix LongString DoubleQuote <$
+            text "\"\"" <*>
+            manyTill stringChar (text "\"\"\"")
+            <|>
+            TkFormattedString prefix ShortString DoubleQuote <$> manyTill stringChar (char '"')
     , do
+        -- string literal between single quotes, either one or 3 double  quotes
+        -- (''' ... ''') for string embedding new-lines
         sp <- try $ optional stringOrBytesPrefix <* char '\''
         case sp of
           Nothing ->
@@ -428,32 +440,38 @@ parseToken =
             manyTill stringChar (text "'''")
             <|>
             TkString Nothing ShortString SingleQuote <$> manyTill stringChar (char '\'')
-          Just (Left (Left prefix)) ->
+          Just (RSP prefix) ->
             TkRawString prefix LongString SingleQuote . concat <$
             text "''" <*>
             manyTill rawStringChar (text "'''")
             <|>
             TkRawString prefix ShortString SingleQuote . concat <$>
             manyTill rawStringChar (char '\'')
-          Just (Left (Right prefix)) ->
+          Just (SP prefix) ->
             TkString (Just prefix) LongString SingleQuote <$
             text "''" <*>
             manyTill stringChar (text "'''")
             <|>
             TkString (Just prefix) ShortString SingleQuote <$> manyTill stringChar (char '\'')
-          Just (Right (Left prefix)) ->
+          Just (RBP prefix) ->
             TkRawBytes prefix LongString SingleQuote . concat <$
             text "''" <*>
             manyTill rawStringChar (text "'''")
             <|>
             TkRawBytes prefix ShortString SingleQuote . concat <$>
             manyTill rawStringChar (char '\'')
-          Just (Right (Right prefix)) ->
+          Just (BP  prefix) ->
             TkBytes prefix LongString SingleQuote <$
             text "''" <*>
             manyTill stringChar (text "'''")
             <|>
             TkBytes prefix ShortString SingleQuote <$> manyTill stringChar (char '\'')
+          Just (FP prefix) ->
+            TkFormattedString prefix LongString SingleQuote <$
+            text "''" <*>
+            manyTill stringChar (text "'''")
+            <|>
+            TkFormattedString prefix ShortString SingleQuote <$> manyTill stringChar (char '\'')
     , fmap TkIdent $
       (:) <$>
       satisfy isIdentifierStart <*>

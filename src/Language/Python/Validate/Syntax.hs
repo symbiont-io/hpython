@@ -385,6 +385,10 @@ validateStringLiteralSyntax (StringLiteral a b c d e f) =
   StringLiteral a b c d <$>
   traverse (validateStringPyChar $ getAnn a) e <*>
   validateWhitespace (getAnn a) f
+validateStringLiteralSyntax (FormattedStringLiteral a b c d e f) =
+  FormattedStringLiteral a b c d <$>
+  traverse (validateStringPyChar $ getAnn a) e <*>
+  validateWhitespace (getAnn a) f
 validateStringLiteralSyntax (BytesLiteral a b c d e f) =
   BytesLiteral a b c d <$>
   traverse (validateBytesPyChar $ getAnn a) e <*>
@@ -545,6 +549,7 @@ validateExprSyntax (String a strLits) =
     all
       (\case
           StringLiteral{} -> True
+          FormattedStringLiteral{} -> True
           RawStringLiteral{} -> True
           _ -> False)
       strLits

@@ -15,7 +15,7 @@ import Language.Python.Syntax.CommaSep (CommaSep(..), Comma(..))
 import Language.Python.Syntax.Expr (Expr(..))
 import Language.Python.Syntax.Strings
   ( StringLiteral(..), StringType(..), QuoteType(..), PyChar(..)
-  , RawBytesPrefix(..), RawStringPrefix(..)
+  , RawBytesPrefix(..), RawStringPrefix(..), FormattedPrefix(..)
   )
 import Language.Python.Syntax.Whitespace (Whitespace(..))
 
@@ -552,3 +552,60 @@ prop_fulltrip_43 =
       str = showExpr e
     res <- shouldBeParseSuccess parseExpr str
     str === showExpr (() <$ res)
+
+prop_fulltrip_44 :: Property
+prop_fulltrip_44 =
+  withTests 1 . property $ do
+    let str = "f'interpolated{x}'"
+
+    void $ shouldBeParseSuccess parseModule str
+
+prop_fulltrip_45 :: Property
+prop_fulltrip_45 =
+  withTests 1 . property $ do
+    let str =
+          showExpr $
+          String (Ann ())
+            (pure $
+             FormattedStringLiteral (Ann ())
+               Prefix_f
+               LongString
+               DoubleQuote
+               [ Char_lit 's', Char_lit '{', Char_lit '}' ]
+               [])
+    annotateShow str
+
+    res <- shouldBeParseSuccess parseExpr str
+    str === showExpr (() <$ res)
+
+prop_fulltrip_46 :: Property
+prop_fulltrip_46 =
+  withTests 1 . property $ do
+    let str = "f'''interpolated{x}\nwith newline'''"
+
+    void $ shouldBeParseSuccess parseModule str
+
+prop_fulltrip_47 :: Property
+prop_fulltrip_47 =
+  withTests 1 . property $ do
+    let str =
+          showExpr $
+          String (Ann ())
+            (pure $
+             FormattedStringLiteral (Ann ())
+               Prefix_F
+               LongString
+               SingleQuote
+               [ Char_lit 's', Char_lit '{', Char_lit '}' ]
+               [])
+    annotateShow str
+
+    res <- shouldBeParseSuccess parseExpr str
+    str === showExpr (() <$ res)
+
+prop_fulltrip_48 :: Property
+prop_fulltrip_48 =
+  withTests 1 . property $ do
+    let str = "f\"\"\"interpolated{x}\nwith newline\"\"\""
+
+    void $ shouldBeParseSuccess parseModule str

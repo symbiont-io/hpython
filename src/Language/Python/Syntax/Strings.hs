@@ -27,6 +27,7 @@ module Language.Python.Syntax.Strings
   , StringType(..)
     -- ** String prefixes
   , StringPrefix(..)
+  , FormattedPrefix(..)
   , RawStringPrefix(..)
   , BytesPrefix(..)
   , RawBytesPrefix(..)
@@ -44,6 +45,7 @@ module Language.Python.Syntax.Strings
   , showRawStringPrefix
   , showBytesPrefix
   , showRawBytesPrefix
+  , showFormattedStringPrefix
     -- * Extra functions
   , isEscape
   )
@@ -108,6 +110,14 @@ data BytesPrefix
   | Prefix_B
   deriving (Eq, Ord, Show, Generic)
 
+-- | This prefix indicates it's a formatted string
+--
+-- See <https://docs.python.org/3/reference/lexical_analysis.html#formatted-string-literals>
+data FormattedPrefix
+  = Prefix_f
+  | Prefix_F
+  deriving (Eq, Ord, Show, Generic)
+
 -- | A string of raw bytes can be indicated by a number of prefixes
 data RawBytesPrefix
   = Prefix_br
@@ -123,10 +133,11 @@ data RawBytesPrefix
 -- | Most types of 'StringLiteral' have prefixes. Plain old strings may have
 -- an optional prefix, but it is meaningless.
 hasPrefix :: StringLiteral a -> Bool
-hasPrefix RawStringLiteral{} = True
-hasPrefix RawBytesLiteral{} = True
+hasPrefix RawStringLiteral{}          = True
+hasPrefix RawBytesLiteral{}           = True
 hasPrefix (StringLiteral _ a _ _ _ _) = isJust a
-hasPrefix BytesLiteral{} = True
+hasPrefix BytesLiteral{}              = True
+hasPrefix FormattedStringLiteral{}    = True
 
 -- | A 'StringLiteral', complete with a prefix, information about
 -- quote type and number, and a list of 'PyChar's.
@@ -135,36 +146,47 @@ hasPrefix BytesLiteral{} = True
 -- trailing whitespace.
 data StringLiteral a
   = RawStringLiteral
-  { _stringLiteralAnn :: Ann a
+  { _stringLiteralAnn             :: Ann a
   , _unsafeRawStringLiteralPrefix :: RawStringPrefix
-  , _stringLiteralStringType :: StringType
-  , _stringLiteralQuoteType :: QuoteType
-  , _stringLiteralValue :: [PyChar]
-  , _stringLiteralWhitespace :: [Whitespace]
+  , _stringLiteralStringType      :: StringType
+  , _stringLiteralQuoteType       :: QuoteType
+  , _stringLiteralValue           :: [PyChar]
+  , _stringLiteralWhitespace      :: [Whitespace]
   }
   | StringLiteral
-  { _stringLiteralAnn :: Ann a
+  { _stringLiteralAnn          :: Ann a
   , _unsafeStringLiteralPrefix :: Maybe StringPrefix
-  , _stringLiteralStringType :: StringType
-  , _stringLiteralQuoteType :: QuoteType
-  , _stringLiteralValue :: [PyChar]
-  , _stringLiteralWhitespace :: [Whitespace]
+  , _stringLiteralStringType   :: StringType
+  , _stringLiteralQuoteType    :: QuoteType
+  , _stringLiteralValue        :: [PyChar]
+  , _stringLiteralWhitespace   :: [Whitespace]
   }
   | RawBytesLiteral
-  { _stringLiteralAnn :: Ann a
+  { _stringLiteralAnn            :: Ann a
   , _unsafeRawBytesLiteralPrefix :: RawBytesPrefix
-  , _stringLiteralStringType :: StringType
-  , _stringLiteralQuoteType :: QuoteType
-  , _stringLiteralValue :: [PyChar]
-  , _stringLiteralWhitespace :: [Whitespace]
+  , _stringLiteralStringType     :: StringType
+  , _stringLiteralQuoteType      :: QuoteType
+  , _stringLiteralValue          :: [PyChar]
+  , _stringLiteralWhitespace     :: [Whitespace]
   }
   | BytesLiteral
-  { _stringLiteralAnn :: Ann a
+  { _stringLiteralAnn         :: Ann a
   , _unsafeBytesLiteralPrefix :: BytesPrefix
-  , _stringLiteralStringType :: StringType
-  , _stringLiteralQuoteType :: QuoteType
-  , _stringLiteralValue :: [PyChar]
-  , _stringLiteralWhitespace :: [Whitespace]
+  , _stringLiteralStringType  :: StringType
+  , _stringLiteralQuoteType   :: QuoteType
+  , _stringLiteralValue       :: [PyChar]
+  , _stringLiteralWhitespace  :: [Whitespace]
+  }
+  | FormattedStringLiteral
+  -- see https://docs.python.org/3/reference/lexical_analysis.html#formatted-string-literals
+  -- should really not exist
+  -- TODO transform f'foo{x} is bar{y + 3:#0x}' into 'foo {} is bar {#0x}'.format(x, y + 3)
+  { _stringLiteralAnn             :: Ann a
+  , _formattedStringLiteralPrefix :: FormattedPrefix
+  , _stringLiteralStringType      :: StringType
+  , _stringLiteralQuoteType       :: QuoteType
+  , _stringLiteralValue           :: [PyChar]
+  , _stringLiteralWhitespace      :: [Whitespace]
   }
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable, Generic)
 
@@ -179,12 +201,14 @@ instance HasTrailingWhitespace (StringLiteral a) where
           RawStringLiteral _ _ _ _ _ ws -> ws
           StringLiteral _ _ _ _ _ ws -> ws
           RawBytesLiteral _ _ _ _ _ ws -> ws
+          FormattedStringLiteral _ _ _ _ _ ws -> ws
           BytesLiteral _ _ _ _ _ ws -> ws)
       (\s ws -> case s of
-          StringLiteral a b c d e _ -> StringLiteral a b c d e ws
-          RawStringLiteral a b c d e _ -> RawStringLiteral a b c d e ws
-          BytesLiteral a b c d e _ -> BytesLiteral a b c d e ws
-          RawBytesLiteral a b c d e _ -> RawBytesLiteral a b c d e ws)
+          StringLiteral a b c d e _          -> StringLiteral a b c d e ws
+          RawStringLiteral a b c d e _       -> RawStringLiteral a b c d e ws
+          BytesLiteral a b c d e _           -> BytesLiteral a b c d e ws
+          FormattedStringLiteral a b c d e _ -> FormattedStringLiteral a b c d e ws
+          RawBytesLiteral a b c d e _        -> RawBytesLiteral a b c d e ws)
 
 -- | A character in a string literal. This is a large sum type, with a
 -- catch-all of a Haskell 'Char'.
@@ -286,6 +310,12 @@ showStringPrefix sp =
   case sp of
     Prefix_u -> "u"
     Prefix_U -> "U"
+
+showFormattedStringPrefix :: FormattedPrefix -> Text
+showFormattedStringPrefix sp =
+  case sp of
+    Prefix_f -> "f"
+    Prefix_F -> "F"
 
 showRawStringPrefix :: RawStringPrefix -> Text
 showRawStringPrefix sp =

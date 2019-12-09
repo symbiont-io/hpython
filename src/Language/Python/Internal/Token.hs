@@ -66,6 +66,7 @@ data PyToken a
   | TkImag (ImagLiteral a)
   | TkIdent String a
   | TkString (Maybe StringPrefix) StringType QuoteType [PyChar] a
+  | TkFormattedString FormattedPrefix StringType QuoteType [PyChar] a
   | TkBytes BytesPrefix StringType QuoteType [PyChar] a
   | TkRawString RawStringPrefix StringType QuoteType [PyChar] a
   | TkRawBytes RawBytesPrefix StringType QuoteType [PyChar] a
@@ -136,98 +137,99 @@ instance Ord (PyToken a) where
 pyTokenAnn :: PyToken a -> a
 pyTokenAnn tk =
   case tk of
-    TkPipe a -> a
-    TkCaret a -> a
-    TkAmpersand a -> a
-    TkIndent a _ -> a
-    TkLevel a _ -> a
-    TkDedent a -> a
-    TkDef a -> a
-    TkReturn a -> a
-    TkPass a -> a
-    TkBreak a -> a
-    TkContinue a -> a
-    TkTrue a -> a
-    TkFalse a -> a
-    TkNone a -> a
-    TkEllipsis a -> a
-    TkOr a -> a
-    TkAnd a -> a
-    TkIs a -> a
-    TkNot a -> a
-    TkGlobal a -> a
-    TkNonlocal a -> a
-    TkDel a -> a
-    TkLambda a -> a
-    TkImport a -> a
-    TkFrom a -> a
-    TkAs a -> a
-    TkRaise a -> a
-    TkTry a -> a
-    TkExcept a -> a
-    TkFinally a -> a
-    TkClass a -> a
-    TkRightArrow a -> a
-    TkWith a -> a
-    TkFor a -> a
-    TkIn a -> a
-    TkYield a -> a
-    TkPlus a -> a
-    TkMinus a -> a
-    TkTilde a -> a
-    TkIf a -> a
-    TkElse a -> a
-    TkElif a -> a
-    TkWhile a -> a
-    TkAssert a -> a
-    TkInt a -> a ^. annot_
-    TkFloat a -> a ^. annot_
-    TkImag a -> a ^. annot_
-    TkIdent _ a -> a
-    TkString _ _ _ _ a -> a
-    TkBytes _ _ _ _ a -> a
+    TkPipe a              -> a
+    TkCaret a             -> a
+    TkAmpersand a         -> a
+    TkIndent a _          -> a
+    TkLevel a _           -> a
+    TkDedent a            -> a
+    TkDef a               -> a
+    TkReturn a            -> a
+    TkPass a              -> a
+    TkBreak a             -> a
+    TkContinue a          -> a
+    TkTrue a              -> a
+    TkFalse a             -> a
+    TkNone a              -> a
+    TkEllipsis a          -> a
+    TkOr a                -> a
+    TkAnd a               -> a
+    TkIs a                -> a
+    TkNot a               -> a
+    TkGlobal a            -> a
+    TkNonlocal a          -> a
+    TkDel a               -> a
+    TkLambda a            -> a
+    TkImport a            -> a
+    TkFrom a              -> a
+    TkAs a                -> a
+    TkRaise a             -> a
+    TkTry a               -> a
+    TkExcept a            -> a
+    TkFinally a           -> a
+    TkClass a             -> a
+    TkRightArrow a        -> a
+    TkWith a              -> a
+    TkFor a               -> a
+    TkIn a                -> a
+    TkYield a             -> a
+    TkPlus a              -> a
+    TkMinus a             -> a
+    TkTilde a             -> a
+    TkIf a                -> a
+    TkElse a              -> a
+    TkElif a              -> a
+    TkWhile a             -> a
+    TkAssert a            -> a
+    TkInt a               -> a ^. annot_
+    TkFloat a             -> a ^. annot_
+    TkImag a              -> a ^. annot_
+    TkIdent _ a           -> a
+    TkString _ _ _ _ a    -> a
+    TkFormattedString _ _ _ _ a    -> a
+    TkBytes _ _ _ _ a     -> a
     TkRawString _ _ _ _ a -> a
-    TkRawBytes _ _ _ _ a -> a
-    TkSpace a -> a
-    TkTab a -> a
-    TkNewline _ a -> a
-    TkLeftBracket a -> a
-    TkRightBracket a -> a
-    TkLeftParen a -> a
-    TkRightParen a -> a
-    TkLeftBrace a -> a
-    TkRightBrace a -> a
-    TkLt a -> a
-    TkLte a -> a
-    TkEq a -> a
-    TkDoubleEq a -> a
-    TkBangEq a -> a
-    TkGt a -> a
-    TkGte a -> a
-    TkContinued _ a -> a
-    TkColon a -> a
-    TkSemicolon a -> a
-    TkComma a -> a
-    TkDot a -> a
-    TkComment a -> a ^. annot_
-    TkStar a -> a
-    TkDoubleStar a -> a
-    TkSlash a -> a
-    TkDoubleSlash a -> a
-    TkPercent a -> a
-    TkShiftLeft a -> a
-    TkShiftRight a -> a
-    TkPlusEq a -> a
-    TkMinusEq a -> a
-    TkStarEq a -> a
-    TkAtEq a -> a
-    TkAt a -> a
-    TkSlashEq a -> a
-    TkPercentEq a -> a
-    TkAmpersandEq a -> a
-    TkPipeEq a -> a
-    TkCaretEq a -> a
-    TkShiftLeftEq a -> a
-    TkShiftRightEq a -> a
-    TkDoubleStarEq a -> a
-    TkDoubleSlashEq a -> a
+    TkRawBytes _ _ _ _ a  -> a
+    TkSpace a             -> a
+    TkTab a               -> a
+    TkNewline _ a         -> a
+    TkLeftBracket a       -> a
+    TkRightBracket a      -> a
+    TkLeftParen a         -> a
+    TkRightParen a        -> a
+    TkLeftBrace a         -> a
+    TkRightBrace a        -> a
+    TkLt a                -> a
+    TkLte a               -> a
+    TkEq a                -> a
+    TkDoubleEq a          -> a
+    TkBangEq a            -> a
+    TkGt a                -> a
+    TkGte a               -> a
+    TkContinued _ a       -> a
+    TkColon a             -> a
+    TkSemicolon a         -> a
+    TkComma a             -> a
+    TkDot a               -> a
+    TkComment a           -> a ^. annot_
+    TkStar a              -> a
+    TkDoubleStar a        -> a
+    TkSlash a             -> a
+    TkDoubleSlash a       -> a
+    TkPercent a           -> a
+    TkShiftLeft a         -> a
+    TkShiftRight a        -> a
+    TkPlusEq a            -> a
+    TkMinusEq a           -> a
+    TkStarEq a            -> a
+    TkAtEq a              -> a
+    TkAt a                -> a
+    TkSlashEq a           -> a
+    TkPercentEq a         -> a
+    TkAmpersandEq a       -> a
+    TkPipeEq a            -> a
+    TkCaretEq a           -> a
+    TkShiftLeftEq a       -> a
+    TkShiftRightEq a      -> a
+    TkDoubleStarEq a      -> a
+    TkDoubleSlashEq a     -> a
