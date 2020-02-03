@@ -343,12 +343,12 @@ validateSimpleStatementScope (Raise a ws f) =
     f
 validateSimpleStatementScope (Return a ws e) = Return a ws <$> traverse validateExprScope e
 validateSimpleStatementScope (Expr a e) = Expr a <$> validateExprScope e
-validateSimpleStatementScope (Assign a l rs) =
+validateSimpleStatementScope (Assign a l rs _) =
   Assign a <$>
   validateAssignExprScope l <*>
   ((\a b -> case a of; [] -> b :| []; a : as -> a :| snoc as b) <$>
    traverseOf (traverse._2) validateAssignExprScope (NonEmpty.init rs) <*>
-   (\(ws, b) -> (,) ws <$> validateExprScope b) (NonEmpty.last rs))
+   (\(ws, b) -> (,) ws <$> validateExprScope b) (NonEmpty.last rs)) <*> pure Nothing
 validateSimpleStatementScope (AugAssign a l aa r) =
   (\l' -> AugAssign a l' aa) <$>
   validateExprScope l <*>

@@ -1149,13 +1149,20 @@ renderSimpleStatement (Return _ ws expr) = do
   traverse_ renderWhitespace ws
   traverse_ parensGenerator expr
 renderSimpleStatement (Expr _ expr) = renderYield parensGenerator expr
-renderSimpleStatement (Assign _ lvalue rvalues) = do
+renderSimpleStatement (Assign _ lvalue rvalues mte) = do
   renderExpr lvalue
+  case mte of
+    Nothing -> pure ()
+    Just (d, te) -> do
+      singleton $ TkColon ()
+      traverse_ renderWhitespace d
+      renderExpr te
   traverse_
     (\(ws2, rvalue) -> do
        renderEquals ws2
        renderYield parensGenerator rvalue)
     rvalues
+
 renderSimpleStatement (AugAssign _ lvalue as rvalue) = do
   renderExpr lvalue
   renderAugAssign as

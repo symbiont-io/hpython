@@ -516,7 +516,7 @@ instance HasNewlines (SimpleStatement v a) where
     case s of
       Return a b c -> Return a <$> _Newlines fun b <*> _Newlines fun c
       Expr a b -> Expr a <$> _Newlines fun b
-      Assign a b c -> Assign a <$> _Newlines fun b <*> _Newlines fun c
+      Assign a b c d -> Assign a <$> _Newlines fun b <*> _Newlines fun c <*> _Newlines fun d
       AugAssign a b c d ->
         AugAssign a <$>
         _Newlines fun b <*>

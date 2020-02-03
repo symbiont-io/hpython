@@ -304,7 +304,7 @@ data SimpleStatement (v :: [*]) a
   -- | @\<expr\> (\'=\' \<spaces\> \<expr\>)+@
   --
   -- https://docs.python.org/3.5/reference/simple_stmts.html#assignment-statements
-  | Assign (Ann a) (Expr v a) (NonEmpty (Equals, Expr v a))
+  | Assign (Ann a) (Expr v a) (NonEmpty (Equals, Expr v a)) (Maybe ([Whitespace], Expr v a))
   -- | @\<expr\> \<augassign\> \<expr\>@
   --
   -- https://docs.python.org/3.5/reference/simple_stmts.html#augmented-assignment-statements
@@ -379,7 +379,7 @@ instance HasExprs SimpleStatement where
       x
   _Exprs f (Return a ws e) = Return a ws <$> traverse f e
   _Exprs f (Expr a e) = Expr a <$> f e
-  _Exprs f (Assign a e1 es) = Assign a <$> f e1 <*> traverseOf (traverse._2) f es
+  _Exprs f (Assign a e1 es mte) = Assign a <$> f e1 <*> (traverseOf (traverse._2) f es) <*> (traverseOf (traverse._2) f mte)
   _Exprs f (AugAssign a e1 as e2) = AugAssign a <$> f e1 <*> pure as <*> f e2
   _Exprs _ p@Pass{} = pure $ p ^. unvalidated
   _Exprs _ p@Break{} = pure $ p ^. unvalidated
