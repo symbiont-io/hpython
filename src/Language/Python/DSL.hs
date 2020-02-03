@@ -1573,7 +1573,7 @@ chainEq t (a:as) =
   SmallStatement
     (Indents [] (Ann ()))
     (MkSmallStatement
-       (Assign (Ann ()) t $ (,) (MkEquals [Space]) <$> (a :| as))
+       (Assign (Ann ()) t ((,) (MkEquals [Space]) <$> (a :| as)) Nothing)
        []
        Nothing
        Nothing
@@ -1585,7 +1585,7 @@ chainEq t (a:as) =
   SmallStatement
     (Indents [] (Ann ()))
     (MkSmallStatement
-       (Assign (Ann ()) (a & trailingWhitespace .~ [Space]) $ pure (MkEquals [Space], b))
+       (Assign (Ann ()) (a & trailingWhitespace .~ [Space]) (pure (MkEquals [Space], b)) Nothing)
        []
        Nothing
        Nothing

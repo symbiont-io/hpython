@@ -3,8 +3,15 @@
 {-# language FlexibleContexts #-}
 {-# language LambdaCase #-}
 {-# language RankNTypes #-}
-{-# language FunctionalDependencies, MultiParamTypeClasses #-}
 {-# language TypeFamilies #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE LambdaCase             #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE RankNTypes             #-}
+{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE TupleSections          #-}
 
 {-|
 Module      : Language.Python.Internal.Parse
@@ -411,13 +418,27 @@ exprList ws =
      optional (commaSep1' ws $ expr ws))
 
 exprOrStarList :: MonadParsec e PyTokens m => m Whitespace -> m (Expr SrcInfo)
-exprOrStarList ws =
+exprOrStarList ws = do
   (\e -> maybe e (uncurry $ Tuple (e ^. exprAnn) e)) <$>
-  (expr ws <|> starExpr ws) <*>
-  optional
-    ((,) <$>
-     (snd <$> comma ws) <*>
-     optional (commaSep1' ws $ expr ws <|> starExpr ws))
+    (expr ws <|> starExpr ws) <*>
+    optional
+      ((,) <$>
+        (snd <$> comma ws) <*>
+        optional (commaSep1' ws $ expr ws <|> starExpr ws))
+  
+
+exprWithType :: MonadParsec e PyTokens m => m Whitespace -> m (Expr SrcInfo, Maybe ([Whitespace], Expr SrcInfo))
+exprWithType ws = do
+  e <- ((\e -> maybe e (uncurry $ Tuple (e ^. exprAnn) e)) <$>
+         (expr ws <|> starExpr ws) <*>
+         optional
+           ((,) <$>
+            (snd <$> comma ws) <*>
+            optional (commaSep1' ws $ expr ws <|> starExpr ws)))
+  mte <- optional ((\(_, ws) -> (ws,)) <$> token anySpace (\case; TkColon{} -> True; _ -> False) ":" <*> expr ws)
+  pure (e, mte)
+
+  
 
 compIf :: MonadParsec e PyTokens m => m (CompIf SrcInfo)
 compIf =
@@ -791,7 +812,7 @@ orExpr ws =
            (snd <$> comma anySpace) <*>
            optional (commaSep1' anySpace (expr anySpace <|> starExpr anySpace))))) <*>
       (snd <$> token ws (\case; TkRightBracket{} -> True; _ -> False) "]")
-
+      
     doubleStarExpr ws =
       (\(tk, sp) -> DictUnpack (pyTokenAnn tk) sp) <$>
       doubleStar ws <*>
@@ -971,13 +992,13 @@ simpleStatement =
       mkAugAssign DoubleSlashEq (\case; TkDoubleSlashEq{} -> True; _ -> False) "//="
 
     exprOrAssignSt =
-      (\a ->
+      (\(a, mt) ->
          maybe
            (Expr (a ^. exprAnn) a)
            (either
-              (Assign (a ^. exprAnn) a)
+              (\e -> Assign (a ^. exprAnn) a e mt)
               (uncurry $ AugAssign (a ^. exprAnn) a))) <$>
-      exprOrStarList space <*>
+      exprWithType space <*>
       optional
         (Left <$>
          some1
