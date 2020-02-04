@@ -954,7 +954,7 @@ validateSimpleStatementSyntax (Return a ws expr) =
 validateSimpleStatementSyntax (Expr a expr) =
   Expr a <$>
   validateExprSyntax expr
-validateSimpleStatementSyntax (Assign a lvalue rs) =
+validateSimpleStatementSyntax (Assign a lvalue rs _) =
   liftVM0 ask `bindVM` \sctxt ->
     let
       assigns =
@@ -974,7 +974,7 @@ validateSimpleStatementSyntax (Assign a lvalue rs) =
             validateAssignmentSyntax (getAnn a) b)
          (NonEmpty.init rs) <*>
        (\(ws, b) -> (,) <$> validateEquals (getAnn a) ws <*> validateExprSyntax b)
-         (NonEmpty.last rs)) <*
+         (NonEmpty.last rs)) <*> pure Nothing <*
       liftVM0 (modify (assigns ++))
 validateSimpleStatementSyntax (AugAssign a lvalue aa rvalue) =
   AugAssign a <$>
