@@ -688,7 +688,7 @@ genSimpleStatement = do
          when (isJust isInFunction) $
            willBeNonlocals %= ((a ^.. folded._2.cosmos._Ident.identValue) ++)
          sizedBind ((,) <$> genEquals <*> genExpr) $ \b ->
-           pure $ Assign (Ann ()) (snd $ NonEmpty.head a) (NonEmpty.fromList $ snoc (NonEmpty.tail a) b)
+           pure $ Assign (Ann ()) (snd $ NonEmpty.head a) (NonEmpty.fromList $ snoc (NonEmpty.tail a) b) Nothing
      , sized2M
          (\a b -> AugAssign (Ann ()) a <$> genAugAssign <*> pure b)
          genAugAssignable

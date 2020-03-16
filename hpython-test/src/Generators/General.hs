@@ -325,7 +325,7 @@ genSimpleStatement =
     , sized2
         (Assign (Ann ()))
         genExpr
-        (sizedNonEmpty ((,) <$> genEquals <*> genExpr))
+        (sizedNonEmpty ((,) <$> genEquals <*> genExpr)) <*> pure Nothing
     , sized2M
         (\a b -> (\aa -> AugAssign (Ann ()) a aa b) <$> genAugAssign)
         genExpr
