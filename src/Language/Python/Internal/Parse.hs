@@ -917,7 +917,7 @@ simpleStatement =
       expr space <*>
       optional ((,) <$> (snd <$> comma space) <*> expr space)
 
-    yieldSt = (\a -> Expr (a ^. exprAnn) a) <$> yieldExpr space
+    yieldSt = (\a -> Expr (a ^. exprAnn) a) <$> yieldExpr space <*> pure Nothing      
 
     returnSt =
       (\(tkReturn, retSpaces) -> Return (pyTokenAnn tkReturn) retSpaces) <$>
@@ -994,7 +994,7 @@ simpleStatement =
     exprOrAssignSt =
       (\(a, mt) ->
          maybe
-           (Expr (a ^. exprAnn) a)
+           (Expr (a ^. exprAnn) a mt)
            (either
               (\e -> Assign (a ^. exprAnn) a e mt)
               (uncurry $ AugAssign (a ^. exprAnn) a))) <$>

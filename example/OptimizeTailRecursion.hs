@@ -75,7 +75,7 @@ optimizeTailRecursion st = do
           case last (s : fmap (^. _2) ss) of
             Return _ _ (Just e) -> isTailCall name e
             -- Return _ _ Nothing -> True
-            Expr _ e -> isTailCall name e
+            Expr _ e _ -> isTailCall name e
             _ -> False
         _ -> False
 
@@ -144,6 +144,6 @@ optimizeTailRecursion st = do
                         newSts <>
                         maybe [] (\e' -> [ line_ ("__res__tr" .= e') ]) e <>
                         [ line_ break_ ]
-                  Expr _ e
+                  Expr _ e _
                     | isTailCall name e -> newSts <> [line_ pass_]
                   _ -> [line_ st]

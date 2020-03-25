@@ -951,9 +951,8 @@ validateSimpleStatementSyntax (Return a ws expr) =
         validateWhitespace (getAnn a) ws <*>
         traverse validateExprSyntax expr
       _ -> errorVM1 (_ReturnOutsideFunction # getAnn a)
-validateSimpleStatementSyntax (Expr a expr) =
-  Expr a <$>
-  validateExprSyntax expr
+validateSimpleStatementSyntax (Expr a expr _) =
+  Expr a <$> validateExprSyntax expr <*> pure Nothing
 validateSimpleStatementSyntax (Assign a lvalue rs _) =
   liftVM0 ask `bindVM` \sctxt ->
     let

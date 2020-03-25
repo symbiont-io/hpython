@@ -161,7 +161,7 @@ data CompoundStatement a
 
 data SimpleStatement a
   = Return a [Whitespace] (Maybe (Expr a))
-  | Expr a (Expr a)
+  | Expr a (Expr a) (Maybe ([Whitespace], Expr a))
   | Assign a (Expr a) (NonEmpty (Equals, Expr a)) (Maybe ([Whitespace], Expr a))
   | AugAssign a (Expr a) (AugAssign a) (Expr a)
   | Pass a [Whitespace]
@@ -883,7 +883,7 @@ fromIR_SimpleStatement ex =
       traverseOf (traverse._2) fromIR_expr c <*>
       traverseOf (traverse._2) fromIR_expr d
     Return a b c -> Syntax.Return (Ann a) b <$> traverse fromIR_expr c
-    Expr a b -> Syntax.Expr (Ann a) <$> fromIR_expr b
+    Expr a b c -> Syntax.Expr (Ann a) <$> fromIR_expr b <*> traverseOf (traverse._2) fromIR_expr c
     AugAssign a b c d ->
       (\b' d' -> Syntax.AugAssign (Ann a) b' c d') <$>
       fromIR_expr b <*>

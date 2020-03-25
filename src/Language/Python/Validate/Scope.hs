@@ -342,7 +342,7 @@ validateSimpleStatementScope (Raise a ws f) =
        traverseOf (traverse._2) validateExprScope c)
     f
 validateSimpleStatementScope (Return a ws e) = Return a ws <$> traverse validateExprScope e
-validateSimpleStatementScope (Expr a e) = Expr a <$> validateExprScope e
+validateSimpleStatementScope (Expr a e _) = Expr a <$> validateExprScope e <*> pure Nothing
 validateSimpleStatementScope (Assign a l rs _) =
   Assign a <$>
   validateAssignExprScope l <*>

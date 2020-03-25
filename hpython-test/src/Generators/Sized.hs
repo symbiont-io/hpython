@@ -2,7 +2,6 @@
 module Generators.Sized where
 
 import Data.List.NonEmpty (NonEmpty(..))
-import Data.Semigroup ((<>))
 
 import Hedgehog
 import qualified Hedgehog.Gen as Gen

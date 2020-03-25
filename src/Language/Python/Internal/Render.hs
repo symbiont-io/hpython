@@ -1148,7 +1148,12 @@ renderSimpleStatement (Return _ ws expr) = do
   singleton $ TkReturn ()
   traverse_ renderWhitespace ws
   traverse_ parensGenerator expr
-renderSimpleStatement (Expr _ expr) = renderYield parensGenerator expr
+renderSimpleStatement (Expr _ expr Nothing) = renderYield parensGenerator expr
+renderSimpleStatement (Expr _ expr (Just (d, te))) = do
+  renderYield parensGenerator expr
+  singleton $ TkColon ()
+  traverse_ renderWhitespace d
+  renderExpr te
 renderSimpleStatement (Assign _ lvalue rvalues mte) = do
   renderExpr lvalue
   case mte of

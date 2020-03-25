@@ -37,12 +37,12 @@ append_to =
      ( SmallStatement
          (Indents [replicate 4 Space ^. from indentWhitespaces] (Ann ()))
          (MkSmallStatement
-          (Expr (Ann ()) $
-           Call (Ann ())
+          (Expr (Ann ())
+           (Call (Ann ())
              (Deref (Ann ()) (Ident (Ann ()) "to") [] "append")
              []
              (Just $ CommaSepOne1' (PositionalArg (Ann ()) (Ident (Ann ()) "element")) Nothing)
-             [])
+             []) Nothing)
           []
           Nothing
           Nothing

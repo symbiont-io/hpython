@@ -511,7 +511,7 @@ instance AsLine Statement where
   line_ = Line . Right
 
 instance AsLine Expr where
-  line_ e = line_ $ Expr (e ^. annot) e
+  line_ e = line_ $ Expr (e ^. annot) e Nothing
 
 instance HasExprs Line where
   _Exprs f (Line a) = Line <$> (_Right._Exprs) f a
@@ -988,7 +988,7 @@ expr_ :: Raw Expr -> Raw Statement
 expr_ e =
   SmallStatement
     (Indents [] (Ann ()))
-    (MkSmallStatement (Expr (Ann ()) e) [] Nothing Nothing (Just LF))
+    (MkSmallStatement (Expr (Ann ()) e Nothing) [] Nothing Nothing (Just LF))
 
 -- |
 -- >>> list_ [li_ $ var_ "a"]
