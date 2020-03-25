@@ -1,6 +1,4 @@
-{-# LANGUAGE DataKinds    #-}
-{-# LANGUAGE TypeFamilies #-}
-
+{-# language DataKinds, TypeFamilies #-}
 module Generators.General where
 
 import Control.Applicative
@@ -8,9 +6,9 @@ import Control.Lens.Getter
 import Control.Lens.Iso (from)
 import Control.Lens.Review (review)
 
-import           Hedgehog
-import qualified Hedgehog.Gen                    as Gen
-import qualified Hedgehog.Range                  as Range
+import Hedgehog
+import qualified Hedgehog.Gen as Gen
+import qualified Hedgehog.Range as Range
 
 import Language.Python.DSL
 import Language.Python.Optics
@@ -24,8 +22,8 @@ import Language.Python.Syntax.Statement
 import Language.Python.Syntax.Strings
 import Language.Python.Syntax.Whitespace
 
-import           Generators.Common
-import           Generators.Sized
+import Generators.Common
+import Generators.Sized
 
 genBlank :: MonadGen m => m (Blank ())
 genBlank = Blank (Ann ()) <$> genWhitespaces <*> Gen.maybe genComment
@@ -323,11 +321,11 @@ genSimpleStatement =
     , Break (Ann ()) <$> genWhitespaces
     , Continue (Ann ()) <$> genWhitespaces
     ]
-    [ Expr (Ann ()) <$> genExpr
+    [ Expr (Ann ()) <$> genExpr <*> pure Nothing
     , sized2
         (Assign (Ann ()))
         genExpr
-        (sizedNonEmpty ((,) <$> genEquals <*> genExpr))
+        (sizedNonEmpty ((,) <$> genEquals <*> genExpr)) <*> pure Nothing
     , sized2M
         (\a b -> (\aa -> AugAssign (Ann ()) a aa b) <$> genAugAssign)
         genExpr
@@ -399,8 +397,7 @@ genCompoundStatement =
         (genSuite genSimpleStatement genBlock)
         (sizedList $
          sized2M
-           (\a b ->
-              (,,,) <$> genIndents <*> genWhitespaces <*> pure a <*> pure b)
+           (\a b -> (,,,) <$> genIndents <*> genWhitespaces <*> pure a <*> pure b)
            genExpr
            (genSuite genSimpleStatement genBlock))
         (sizedMaybe $
@@ -488,7 +485,8 @@ genStatement =
     [ CompoundStatement <$> genCompoundStatement ]
 
 genIndent :: MonadGen m => m Indent
-genIndent = view (from indentWhitespaces) <$> genWhitespaces
+genIndent =
+  view (from indentWhitespaces) <$> genWhitespaces
 
 genIndents :: MonadGen m => m (Indents ())
 genIndents = (\is -> Indents is (Ann ())) <$> Gen.list (Range.constant 0 10) genIndent
